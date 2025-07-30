@@ -1,21 +1,15 @@
-# SEDA Protocol Integration Project
+# SEDA PriceFeedAdapter
 
-A comprehensive smart contract project demonstrating two different approaches to integrating with the [SEDA Protocol](https://www.seda.xyz/) oracle network. This project showcases both request-based and verification-based oracle consumption patterns.
+A specialized smart contract for verifying SEDA oracle results using cryptographic proofs. This project demonstrates how to integrate with the [SEDA Protocol](https://www.seda.xyz/) oracle network for result verification and event-driven architectures.
 
 ## 🏗️ Project Overview
 
-This project contains two main contracts that demonstrate different SEDA integration patterns:
-
-### 1. PriceFeedConsumer
-A **request-oriented** contract that creates oracle requests and handles responses.
-
-### 2. PriceFeedAdapter  
-A **verification-oriented** contract that focuses on verifying oracle results using cryptographic proofs and emitting verification events.
+The **PriceFeedAdapter** is a verification-oriented contract that focuses on verifying oracle results using cryptographic proofs and emitting verification events.
 
 ## 📋 Table of Contents
 
 - [What is SEDA?](#what-is-seda)
-- [Contract Comparison](#contract-comparison)
+- [Features](#features)
 - [Installation & Setup](#installation--setup)
 - [Usage Examples](#usage-examples)
 - [Testing](#testing)
@@ -32,31 +26,17 @@ SEDA is a modular data layer that allows any blockchain to configure its own dat
 - **Flexible Data Sources**: Support for price feeds, weather data, sports results, and custom APIs
 - **Cross-Chain Compatibility**: Works across multiple blockchain networks
 
-## ⚖️ Contract Comparison
+## ✨ Features
 
-| Feature | PriceFeedConsumer | PriceFeedAdapter |
-|---------|------------------|------------------|
-| **Primary Purpose** | Request creation & response handling | Result verification & event emission |
-| **Use Case** | Submit new oracle requests | Verify external oracle results |
-| **SEDA Integration** | RequestHandler + ResultHandler | Direct IProver integration |
-| **Data Flow** | Request → Oracle → Response | External Result → Verification → Events |
-| **Best For** | DeFi apps needing fresh data | Verification services, event monitoring |
-| **Gas Usage** | Higher (posting requests) | Lower (verification only) |
-| **Complexity** | Medium | Lower (focused verification) |
+The PriceFeedAdapter provides:
 
-### PriceFeedConsumer Features
-- ✅ **Request Management**: Create and track oracle requests
-- ✅ **Response Handling**: Automatic processing of oracle responses  
-- ✅ **Fee Management**: Built-in fee handling for requests
-- ✅ **Price Storage**: Store and retrieve latest verified prices
-- ✅ **Event System**: Comprehensive event logging
-
-### PriceFeedAdapter Features  
 - ✅ **Result Verification**: Cryptographic verification using SEDA provers
 - ✅ **Event Emission**: Real-time verification success/failure events
 - ✅ **Data Integrity**: Consensus and exit code validation
 - ✅ **Price Decoding**: Basic price data extraction from oracle results
 - ✅ **Prover Management**: Owner-controlled prover address updates
+- ✅ **Gas Efficient**: Minimal state changes, focused verification
+- ✅ **Event-Driven**: Perfect for monitoring and integration systems
 
 ## 🚀 Installation & Setup
 
@@ -99,27 +79,6 @@ POLYGONSCAN_API_KEY=your_polygonscan_key
 ```
 
 ## 💡 Usage Examples
-
-### PriceFeedConsumer Usage
-
-```typescript
-// Deploy the consumer
-const consumer = await PriceFeedConsumer.deploy(
-  sedaProverAddress,
-  owner,
-  execProgramId,
-  tallyProgramId
-);
-
-// Request a price (pays fees)
-const requestId = await consumer.requestPrice("BTC/USD", { value: fees });
-
-// Get latest price
-const [price, timestamp] = await consumer.getLatestPrice("BTC/USD");
-console.log(`BTC/USD: $${ethers.formatUnits(price, 8)}`);
-```
-
-### PriceFeedAdapter Usage (Current Implementation)
 
 The PriceFeedAdapter is a **pure verification contract** focused on validating oracle results:
 
@@ -169,8 +128,7 @@ Run the comprehensive test suite:
 # Run all tests
 npm test
 
-# Run specific contract tests
-npx hardhat test test/PriceFeedConsumer.test.ts
+# Run adapter tests
 npx hardhat test test/PriceFeedAdapter.test.ts
 
 # Run with gas reporting
@@ -179,9 +137,9 @@ REPORT_GAS=true npm test
 
 ### Test Coverage
 
-- **PriceFeedConsumer**: 17 tests covering request lifecycle, fee management, price storage
-- **PriceFeedAdapter**: 18 tests covering result verification, event emission, prover management
+- **PriceFeedAdapter**: 18 comprehensive tests covering result verification, event emission, prover management
 - **Mock Contracts**: Complete mock prover for isolated testing
+- **Integration Tests**: End-to-end verification workflows
 
 ## 🚀 Deployment
 
@@ -189,11 +147,9 @@ REPORT_GAS=true npm test
 
 ```bash
 # Deploy to local Hardhat network
-npx hardhat run scripts/deploy.ts --network localhost
 npx hardhat run scripts/deployAdapter.ts --network localhost
 
-# Interact with contracts
-npx hardhat run scripts/interact.ts
+# Interact with the contract
 npx hardhat run scripts/interactAdapter.ts
 ```
 
@@ -201,7 +157,6 @@ npx hardhat run scripts/interactAdapter.ts
 
 ```bash
 # Deploy to Sepolia
-npx hardhat run scripts/deploy.ts --network sepolia
 npx hardhat run scripts/deployAdapter.ts --network sepolia
 
 # Verify on Etherscan
@@ -212,7 +167,6 @@ npx hardhat verify --network sepolia DEPLOYED_ADDRESS "constructor" "args"
 
 ```bash
 # Deploy to mainnet (Polygon example)
-npx hardhat run scripts/deploy.ts --network polygon
 npx hardhat run scripts/deployAdapter.ts --network polygon
 ```
 
@@ -238,27 +192,14 @@ graph TD
 
 ```mermaid
 graph LR
-    subgraph "Request Pattern"
-        A[PriceFeedConsumer] --> B[RequestHandler]
-        A --> C[ResultHandler]
-        B --> D[SEDA Core]
-        D --> C
-    end
-    
-    subgraph "Verification Pattern"  
-        E[PriceFeedAdapter] --> F[IProver]
-        F --> G[Secp256k1Prover]
-        G --> H[Merkle Verification]
-    end
+    A[PriceFeedAdapter] --> B[IProver]
+    B --> C[Secp256k1Prover]
+    C --> D[Merkle Verification]
+    A --> E[Event Emission]
+    A --> F[Price Decoding]
 ```
 
-### Data Flow Comparison
-
-**PriceFeedConsumer Flow:**
-1. Contract posts request to SEDA Core
-2. Oracle network processes request
-3. Result posted back to contract
-4. Automatic validation and storage
+### Data Flow
 
 **PriceFeedAdapter Flow:**
 1. External oracle result with proof
@@ -271,20 +212,14 @@ graph LR
 ```
 pricefeed/
 ├── contracts/
-│   ├── PriceFeedConsumer.sol     # Request-based oracle consumer
-│   ├── PriceFeedAdapter.sol      # Verification-based adapter
+│   ├── PriceFeedAdapter.sol      # SEDA result verification contract
 │   └── mocks/
 │       └── MockSedaProver.sol    # Mock prover for testing
 ├── scripts/
-│   ├── deploy.ts                 # Deploy PriceFeedConsumer
 │   ├── deployAdapter.ts          # Deploy PriceFeedAdapter
-│   ├── interact.ts               # Interact with consumer
 │   └── interactAdapter.ts        # Interact with adapter
 ├── test/
-│   ├── PriceFeedConsumer.test.ts # Consumer tests
-│   └── PriceFeedAdapter.test.ts  # Adapter tests
-├── ignition/
-│   └── modules/                  # Hardhat Ignition modules
+│   └── PriceFeedAdapter.test.ts  # Comprehensive test suite
 └── README.md                     # This file
 ```
 
@@ -309,23 +244,20 @@ Both contracts are optimized for gas efficiency:
 
 ## 🛡️ Security Considerations
 
-### PriceFeedConsumer Security
-- ✅ Owner controls for configuration updates
-- ✅ Reentrancy protection on critical functions
-- ✅ Input validation for all external calls
-- ✅ Fee validation and overflow protection
-
 ### PriceFeedAdapter Security  
 - ✅ Cryptographic verification of all results
 - ✅ Consensus validation requirements
 - ✅ Batch sender authentication
 - ✅ Timestamp and exit code validation
+- ✅ Reentrancy protection on critical functions
+- ✅ Owner controls for prover management
+- ✅ Input validation for all external calls
 
 ### General Security
 - ✅ OpenZeppelin contracts for proven security patterns
 - ✅ Comprehensive test coverage
 - ✅ Static analysis compatibility
-- ✅ Upgrade patterns for future enhancements
+- ✅ Minimal attack surface (stateless design)
 
 ## 🌍 Multi-Chain Support
 
@@ -348,10 +280,10 @@ The contracts are designed for easy multi-chain deployment:
 - [ ] **Cross-Chain Bridges**: Multi-chain price synchronization
 
 ### Integration Roadmap
-- [ ] **Chainlink Compatibility**: Dual oracle support
-- [ ] **Band Protocol**: Alternative oracle integration
-- [ ] **UMA Integration**: Optimistic oracle patterns
-- [ ] **Custom Oracles**: Framework for proprietary data sources
+- [ ] **Multi-Prover Support**: Support for multiple verification backends
+- [ ] **Result Aggregation**: Combine verification results from multiple sources
+- [ ] **Advanced Event Filtering**: Enhanced event filtering capabilities
+- [ ] **Verification Analytics**: Built-in metrics and monitoring
 
 ## 🤝 Contributing
 
@@ -405,7 +337,10 @@ npm test
 # 4. Deploy locally
 npx hardhat run scripts/deployAdapter.ts
 
-# 5. Start building! 🚀
+# 5. Interact with the contract
+npx hardhat run scripts/interactAdapter.ts
+
+# 6. Start building! 🚀
 ```
 
 ---
