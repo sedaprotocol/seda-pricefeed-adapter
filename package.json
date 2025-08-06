@@ -1,20 +1,28 @@
 {
   "name": "pricefeed",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "bun run lint:ts && bun run lint:sol",
+    "lint:sol": "solhint 'contracts/**/*.sol' --ignore-path .solhintignore",
+    "lint:sol:fix": "solhint 'contracts/**/*.sol' --fix --ignore-path .solhintignore",
+    "lint:ts": "bunx biome check .",
+    "lint:ts:fix": "bunx biome check --write .",
+    "slither": "slither ."
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@biomejs/biome": "^2.1.2",
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",
     "@types/node": "^24.1.0",
     "hardhat": "^2.26.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "solhint": "^6.0.0"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
