@@ -83,7 +83,10 @@ describe("PriceFeedAdapter", () => {
 
       await expect(
         PriceFeedAdapter.deploy(ethers.ZeroAddress, owner.address),
-      ).to.be.revertedWith("Invalid prover address");
+      ).to.be.revertedWithCustomError(
+        PriceFeedAdapter,
+        "InvalidProverAddress",
+      );
     });
   });
 
@@ -397,7 +400,10 @@ describe("PriceFeedAdapter", () => {
 
       await expect(
         priceFeedAdapter.connect(owner).updateProver(ethers.ZeroAddress),
-      ).to.be.revertedWith("Invalid prover address");
+      ).to.be.revertedWithCustomError(
+        priceFeedAdapter,
+        "InvalidProverAddress",
+      );
     });
   });
 
