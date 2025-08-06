@@ -4,28 +4,44 @@ pragma solidity ^0.8.28;
 import {IProver} from "@seda-protocol/evm/contracts/interfaces/IProver.sol";
 import {SedaDataTypes} from "@seda-protocol/evm/contracts/libraries/SedaDataTypes.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @title PriceFeedAdapter
 /// @notice A specialized adapter contract for processing and verifying SEDA oracle price feed results
 /// @dev This contract focuses on result verification rather than request creation
-contract PriceFeedAdapter is Ownable, ReentrancyGuard {
+/// @author Open Oracle Association
+contract PriceFeedAdapter is Ownable {
+    
+    // Custom errors
+    error InvalidProverAddress();
+    error InvalidMerkleProof();
+    error OracleExecutionFailed();
+    error NoConsensusReached();
+    error FailedToExtractPrice();
     
     // ============ Events ============
     
     /// @notice Emitted when a result is successfully verified and processed
+    /// @param requestId The request identifier
+    /// @param symbol The trading symbol
+    /// @param price The decoded price value
+    /// @param batchHeight The height of the batch containing the result
+    /// @param batchSender The address that posted the batch
     event ResultVerified(
         bytes32 indexed requestId, 
         string indexed symbol, 
-        uint256 price, 
+        uint256 indexed price, 
         uint64 batchHeight,
         address batchSender
     );
     
     /// @notice Emitted when result verification fails
+    /// @param requestId The request identifier
+    /// @param reason The reason for verification failure
     event VerificationFailed(bytes32 indexed requestId, string reason);
     
     /// @notice Emitted when the SEDA prover address is updated
+    /// @param oldProver The previous prover address
+    /// @param newProver The new prover address
     event ProverUpdated(address indexed oldProver, address indexed newProver);
     
     // ============ State Variables ============
@@ -39,7 +55,7 @@ contract PriceFeedAdapter is Ownable, ReentrancyGuard {
     /// @param sedaProverAddress Address of the SEDA SECP256k1 prover contract
     /// @param owner Address of the contract owner
     constructor(address sedaProverAddress, address owner) Ownable(owner) {
-        require(sedaProverAddress != address(0), "Invalid prover address");
+        if (sedaProverAddress == address(0)) revert InvalidProverAddress();
         sedaProver = IProver(sedaProverAddress);
     }
     
@@ -52,7 +68,7 @@ contract PriceFeedAdapter is Ownable, ReentrancyGuard {
         SedaDataTypes.Result calldata result,
         uint64 batchHeight,
         bytes32[] calldata merkleProof
-    ) external nonReentrant returns (bool success) {
+    ) external returns (bool success) {
         // Verify the result using the SEDA prover
         bytes32 resultId = SedaDataTypes.deriveResultId(result);
         (bool isValid, address batchSender) = sedaProver.verifyResultProof(
@@ -78,7 +94,8 @@ contract PriceFeedAdapter is Ownable, ReentrancyGuard {
                 return false;
             }
         } else {
-            emit VerificationFailed(result.drId, result.consensus ? "Oracle execution failed" : "No consensus reached");
+            string memory reason = result.consensus ? "Oracle execution failed" : "No consensus reached";
+            emit VerificationFailed(result.drId, reason);
             return false;
         }
     }
@@ -87,6 +104,7 @@ contract PriceFeedAdapter is Ownable, ReentrancyGuard {
     /// @param requestId The request identifier
     /// @return symbol The trading symbol for this request
     function getRequestSymbol(bytes32 requestId) external view returns (string memory) {
+        requestId; // Suppress unused variable warning
         return "TODO";
     }
     
@@ -110,7 +128,7 @@ contract PriceFeedAdapter is Ownable, ReentrancyGuard {
     /// @notice Update the SEDA prover address
     /// @param newProver Address of the new SEDA prover contract
     function updateProver(address newProver) external onlyOwner {
-        require(newProver != address(0), "Invalid prover address");
+        if (newProver == address(0)) revert InvalidProverAddress();
         address oldProver = address(sedaProver);
         sedaProver = IProver(newProver);
         emit ProverUpdated(oldProver, newProver);

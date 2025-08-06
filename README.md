@@ -249,7 +249,6 @@ Both contracts are optimized for gas efficiency:
 - ✅ Consensus validation requirements
 - ✅ Batch sender authentication
 - ✅ Timestamp and exit code validation
-- ✅ Reentrancy protection on critical functions
 - ✅ Owner controls for prover management
 - ✅ Input validation for all external calls
 

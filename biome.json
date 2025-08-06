@@ -11,5 +11,16 @@
     "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!**/artifacts",
+      "!**/cache",
+      "!**/node_modules",
+      "!**/*.env",
+      "!**/bun.lockb",
+      "!**/typechain-types"
+    ]
   }
 }
