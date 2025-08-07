@@ -13,11 +13,17 @@ describe("PriceFeedAdapter", () => {
     const mockProver = await MockSedaProver.deploy();
     await mockProver.waitForDeployment();
 
+    // Deploy the SedaPriceFeed contract
+    const SedaPriceFeed = await ethers.getContractFactory("SedaPriceFeed");
+    const sedaPriceFeed = await SedaPriceFeed.deploy();
+    await sedaPriceFeed.waitForDeployment();
+
     // Deploy the PriceFeedAdapter contract
     const PriceFeedAdapter =
       await ethers.getContractFactory("PriceFeedAdapter");
     const priceFeedAdapter = await PriceFeedAdapter.deploy(
       await mockProver.getAddress(), // Using mock prover contract address
+      await sedaPriceFeed.getAddress(),
       owner.address,
     );
 
@@ -82,11 +88,12 @@ describe("PriceFeedAdapter", () => {
         await ethers.getContractFactory("PriceFeedAdapter");
 
       await expect(
-        PriceFeedAdapter.deploy(ethers.ZeroAddress, owner.address),
-      ).to.be.revertedWithCustomError(
-        PriceFeedAdapter,
-        "InvalidProverAddress",
-      );
+        PriceFeedAdapter.deploy(
+          ethers.ZeroAddress,
+          ethers.ZeroAddress,
+          owner.address,
+        ),
+      ).to.be.revertedWithCustomError(PriceFeedAdapter, "InvalidProverAddress");
     });
   });
 
@@ -115,11 +122,10 @@ describe("PriceFeedAdapter", () => {
         mockBatchHeight,
         merkleProof,
       );
-      console.log(`Result validation: ${isValid}, sender: ${batchSender}`);
 
       // Check batch validity
       const batchValid = await mockProver.isBatchValid(mockBatchHeight);
-      console.log(`Batch ${mockBatchHeight} valid: ${batchValid}`);
+      expect(batchValid).to.be.true;
 
       expect(isValid).to.be.true;
       expect(batchSender).to.equal(owner.address);
@@ -180,9 +186,10 @@ describe("PriceFeedAdapter", () => {
       );
       expect(isValid).to.be.true;
 
-      // This should emit ResultVerified event
+      // Update the test to use the new function signature and event
       await expect(
         priceFeedAdapter.submitResult(
+          "SEDA/USD", // Add ticker parameter
           validResult,
           mockBatchHeight,
           merkleProof,
@@ -191,8 +198,8 @@ describe("PriceFeedAdapter", () => {
         .to.emit(priceFeedAdapter, "ResultVerified")
         .withArgs(
           validResultId,
-          "symbol",
-          mockPrice,
+          "SEDA/USD", // Use actual ticker instead of "symbol"
+          mockPrice, // int256 price
           mockBatchHeight,
           owner.address,
         );
@@ -214,6 +221,7 @@ describe("PriceFeedAdapter", () => {
 
       // This should return false from submitResult since batch is invalid
       const result = await priceFeedAdapter.submitResult.staticCall(
+        "SEDA/USD",
         mockResult,
         invalidBatchHeight,
         merkleProof,
@@ -223,6 +231,7 @@ describe("PriceFeedAdapter", () => {
       // And should emit VerificationFailed event when actually called
       await expect(
         priceFeedAdapter.submitResult(
+          "SEDA/USD",
           mockResult,
           invalidBatchHeight,
           merkleProof,
@@ -266,6 +275,7 @@ describe("PriceFeedAdapter", () => {
 
       await expect(
         priceFeedAdapter.submitResult(
+          "SEDA/USD",
           noConsensusResult,
           mockBatchHeight,
           merkleProof,
@@ -308,6 +318,7 @@ describe("PriceFeedAdapter", () => {
 
       await expect(
         priceFeedAdapter.submitResult(
+          "SEDA/USD",
           failedResult,
           mockBatchHeight,
           merkleProof,
@@ -355,6 +366,7 @@ describe("PriceFeedAdapter", () => {
 
       await expect(
         priceFeedAdapter.submitResult(
+          "SEDA/USD",
           zeroPriceResult,
           mockBatchHeight,
           merkleProof,
@@ -400,10 +412,7 @@ describe("PriceFeedAdapter", () => {
 
       await expect(
         priceFeedAdapter.connect(owner).updateProver(ethers.ZeroAddress),
-      ).to.be.revertedWithCustomError(
-        priceFeedAdapter,
-        "InvalidProverAddress",
-      );
+      ).to.be.revertedWithCustomError(priceFeedAdapter, "InvalidProverAddress");
     });
   });
 
@@ -437,15 +446,6 @@ describe("PriceFeedAdapter", () => {
   });
 
   describe("View Functions", () => {
-    it("Should return placeholder for getRequestSymbol", async () => {
-      const { priceFeedAdapter, mockRequestId } = await loadFixture(
-        deployPriceFeedAdapterFixture,
-      );
-
-      const symbol = await priceFeedAdapter.getRequestSymbol(mockRequestId);
-      expect(symbol).to.equal("TODO");
-    });
-
     it("Should track prover state correctly", async () => {
       const { priceFeedAdapter, mockProver } = await loadFixture(
         deployPriceFeedAdapterFixture,
@@ -502,6 +502,7 @@ describe("PriceFeedAdapter", () => {
       // 4. Submit a valid result and verify it emits the right event
       await expect(
         priceFeedAdapter.submitResult(
+          "SEDA/USD",
           validResult,
           mockBatchHeight,
           merkleProof,
@@ -510,8 +511,8 @@ describe("PriceFeedAdapter", () => {
         .to.emit(priceFeedAdapter, "ResultVerified")
         .withArgs(
           validResultId,
-          "symbol",
-          mockPrice,
+          "SEDA/USD", // Changed from "symbol" to actual ticker
+          mockPrice, // This should be int256 now
           mockBatchHeight,
           owner.address,
         );
@@ -542,6 +543,7 @@ describe("PriceFeedAdapter", () => {
       // The contract uses nonReentrant modifier on submitResult
       // This test ensures the function can be called successfully
       const success = await priceFeedAdapter.submitResult.staticCall(
+        "SEDA/USD",
         validResult,
         mockBatchHeight,
         merkleProof,
