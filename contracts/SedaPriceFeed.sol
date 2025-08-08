@@ -12,11 +12,11 @@ import {AggregatorV2V3Interface} from "./interfaces/AggregatorV2V3Interface.sol"
 contract SedaPriceFeed is AggregatorV2V3Interface {
     // Custom errors
     error AlreadyInitialized();
-    error Unauthorized(address caller, address expected);
-    error InvalidUpdaterAddress();
-    error StaleResult(uint256 provided, uint256 latest);
-    error NoDataAvailable();
     error HistoricalDataUnsupported();
+    error InvalidUpdaterAddress();
+    error NoDataAvailable();
+    error StaleResult(uint256 provided, uint256 latest);
+    error Unauthorized(address caller, address expected);
 
     // ============ Storage Layout ============
     // WARNING: Storage layout must remain consistent for EIP-1167 proxies

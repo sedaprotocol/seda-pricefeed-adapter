@@ -3,13 +3,12 @@
   "version": "0.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "bunx hardhat test",
     "lint": "bun run lint:ts && bun run lint:sol",
-    "lint:sol": "solhint 'contracts/**/*.sol' --ignore-path .solhintignore",
-    "lint:sol:fix": "solhint 'contracts/**/*.sol' --fix --ignore-path .solhintignore",
+    "lint:sol": "solhint 'contracts/**/*.sol' --ignore-path .solhintignore --noPoster",
+    "lint:sol:fix": "solhint 'contracts/**/*.sol' --fix --ignore-path .solhintignore --noPrompt --noPoster",
     "lint:ts": "bunx biome check .",
-    "lint:ts:fix": "bunx biome check --write .",
-    "slither": "slither ."
+    "lint:ts:fix": "bunx biome check --write ."
   },
   "keywords": [],
   "author": "",
