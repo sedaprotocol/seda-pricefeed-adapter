@@ -1,0 +1,160 @@
+[
+  {
+    "drId": "69388db5b9fbea07a628c481ff3e43b18d2f84ac14c222e041d8514c4db73a0b",
+    "execProgramId": "6b496001317d527351c991359e159d41fdc60e9da2b7c37432f16ad74a04bb83",
+    "execInputs": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACEJUQy1VU0RUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAhFVEgtVVNEVAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+    "tallyProgramId": "6b496001317d527351c991359e159d41fdc60e9da2b7c37432f16ad74a04bb83",
+    "tallyInputs": "",
+    "replicationFactor": 1,
+    "consensusFilter": "AA==",
+    "gasPrice": "2000",
+    "postedGasPrice": "2000",
+    "execGasLimit": "300000000000000",
+    "tallyGasLimit": "50000000000000",
+    "memo": "MjAyNS0wOC0xMVQxNDo1OTo1Mi43NTJa",
+    "payload": "",
+    "paybackAddress": "",
+    "commits": [
+      {
+        "commitment": "1ea5cdba2af3421d796b6cc40e43c2bb362149e1c7d2a8e004842f9cd9b5351e",
+        "reveal": {
+          "reveal": "WzEyMDI0MzU5MDAwMCw0Mjc4MTkwMDAwXQ==",
+          "exitCode": 0,
+          "gasUsed": "21338580168125",
+          "stdOut": "[\"Successfully fetched 2 prices: [120243590000, 4278190000]\\n\"]",
+          "stdErr": "[\"\"]",
+          "blockHeight": 5646814,
+          "txHash": "52174758960A11644E3B52B047190EC8057353DE1BF1936A2B670ACE15883D6A",
+          "timestamp": "2025-08-11T15:00:08.000Z",
+          "proxyPublicKeys": []
+        },
+        "executor": "034ec1ad46de5cc30eaad2579f8e9550ec9d15a5fb8c4ca883908fb00d7de6e16c",
+        "blockHeight": 5646813,
+        "txHash": "B85026B5F0BE5772C1260EFAAC03F67B0706BFA892F6507A5334CC696CED3F37",
+        "timestamp": "2025-08-11T15:00:00.000Z"
+      }
+    ],
+    "result": {
+      "resultId": "f2a9d25cba5308bc3ab280a0dc681671ba0ed8f7af0dda25d1b7100e8965040d",
+      "consensus": true,
+      "result": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABv/E5NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP7//7A=",
+      "exitCode": 0,
+      "gasUsed": "32946462221875",
+      "version": "0.0.1",
+      "blockHeight": 5646814,
+      "timestamp": "2025-08-11T15:00:08.000Z",
+      "moduleResult": {
+        "exitCode": 0,
+        "stdOut": "Final median prices: [Uint(120243590000), Uint(4278190000)]\n",
+        "stdErr": "",
+        "execGasUsed": "21338580168125",
+        "tallyGasUsed": "11607882053750",
+        "proxyPublicKeys": []
+      }
+    },
+    "contract": "seda1gg6f95cymcfrfzhpek7cf5wl53t5kng52cd2m0krgdlu8k58vd8qfjmalm",
+    "version": "0.0.1",
+    "blockHeight": 5646812,
+    "txHash": "4A4BA5F0F2B1628D529B321C19FFB7A1DD7570B26AA3FF76F3199100195BE9F4",
+    "batchNumber": 264689,
+    "timestamp": "2025-08-11T14:59:52.000Z",
+    "gasReport": {
+      "tallyGasUsed": "11607882053750",
+      "hasReducedExecGas": false,
+      "reducedExecGas": "0",
+      "executors": [
+        "034ec1ad46de5cc30eaad2579f8e9550ec9d15a5fb8c4ca883908fb00d7de6e16c,21338580168125"
+      ],
+      "dataProxies": []
+    },
+    "poster": "seda1qznk49cfs2096h7nzr0ay07eqzscfj4yrfvkl9",
+    "burn": "23215764107500000",
+    "refund": "634107075556250000",
+    "executorPayouts": [
+      {
+        "amount": "42677160336250000",
+        "executorAddress": "034ec1ad46de5cc30eaad2579f8e9550ec9d15a5fb8c4ca883908fb00d7de6e16c"
+      }
+    ],
+    "dataProxyPayouts": []
+  },
+  {
+    "drId": "f02683342f389e22c02d39ac5bb4bb6cbc459779eaa6c02e4df22209a4e85ba4",
+    "execProgramId": "6b496001317d527351c991359e159d41fdc60e9da2b7c37432f16ad74a04bb83",
+    "execInputs": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAhCVEMtVVNEVAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+    "tallyProgramId": "6b496001317d527351c991359e159d41fdc60e9da2b7c37432f16ad74a04bb83",
+    "tallyInputs": "",
+    "replicationFactor": 1,
+    "consensusFilter": "AA==",
+    "gasPrice": "2000",
+    "postedGasPrice": "2000",
+    "execGasLimit": "300000000000000",
+    "tallyGasLimit": "50000000000000",
+    "memo": "MjAyNS0wOC0xMVQxNToxNDozOS43Nzha",
+    "payload": "",
+    "paybackAddress": "",
+    "commits": [
+      {
+        "commitment": "ad23f9254aece2d04e3821bafe4c832970172898d7870997ad43ef7fa61709c3",
+        "reveal": {
+          "reveal": "WzEyMDAwMDAwMDAwMF0=",
+          "exitCode": 0,
+          "gasUsed": "15679716385625",
+          "stdOut": "[\"Successfully fetched 1 prices: [120000000000]\\n\"]",
+          "stdErr": "[\"\"]",
+          "blockHeight": 5646921,
+          "txHash": "1EC4442227A8F975FBDBA0EC6A6D644BDC52CA2A3FDC14318C40F65186422C8E",
+          "timestamp": "2025-08-11T15:15:00.000Z",
+          "proxyPublicKeys": []
+        },
+        "executor": "03bf9225c13a33966097bf8ff7a5cc6012ad7f28b8d19e9662106b2d4df7c051a4",
+        "blockHeight": 5646920,
+        "txHash": "CE4D481D1952663A02C86A17CDEFD2577FBF8135069E9B38A0BA15CA7BD39FA8",
+        "timestamp": "2025-08-11T15:14:52.000Z"
+      }
+    ],
+    "result": {
+      "resultId": "d9d90a22c20b89537c05f4103ebe0857d439930ca53fa9ed0a72daeeefe8343a",
+      "consensus": true,
+      "result": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABvwjrAA",
+      "exitCode": 0,
+      "gasUsed": "27115557176875",
+      "version": "0.0.1",
+      "blockHeight": 5646921,
+      "timestamp": "2025-08-11T15:15:00.000Z",
+      "moduleResult": {
+        "exitCode": 0,
+        "stdOut": "Final median prices: [Uint(120000000000)]\n",
+        "stdErr": "",
+        "execGasUsed": "15679716385625",
+        "tallyGasUsed": "11435840791250",
+        "proxyPublicKeys": []
+      }
+    },
+    "contract": "seda1gg6f95cymcfrfzhpek7cf5wl53t5kng52cd2m0krgdlu8k58vd8qfjmalm",
+    "version": "0.0.1",
+    "blockHeight": 5646919,
+    "txHash": "89B7631F5A0890226BC01EB98272C8A2744E48164E3A1DAB9C58B2C92B2F4AC1",
+    "batchNumber": 264750,
+    "timestamp": "2025-08-11T15:14:44.000Z",
+    "gasReport": {
+      "tallyGasUsed": "11435840791250",
+      "hasReducedExecGas": false,
+      "reducedExecGas": "0",
+      "executors": [
+        "03bf9225c13a33966097bf8ff7a5cc6012ad7f28b8d19e9662106b2d4df7c051a4,15679716385625"
+      ],
+      "dataProxies": []
+    },
+    "poster": "seda1qznk49cfs2096h7nzr0ay07eqzscfj4yrfvkl9",
+    "burn": "22871681582500000",
+    "refund": "645768885646250000",
+    "executorPayouts": [
+      {
+        "amount": "31359432771250000",
+        "executorAddress": "03bf9225c13a33966097bf8ff7a5cc6012ad7f28b8d19e9662106b2d4df7c051a4"
+      }
+    ],
+    "dataProxyPayouts": []
+  }
+]

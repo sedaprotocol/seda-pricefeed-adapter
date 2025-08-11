@@ -152,6 +152,26 @@ contract PriceFeedAdapter is Ownable {
         _decodeAndProcess(updateParams, result);
     }
 
+    /// @notice Submits and verifies an oracle result for specific tickers by index,
+    ///         automatically deploying price feeds as needed
+    /// @param updateParams Data Request parameters for the price feed update including gas limits and inputs
+    /// @param result The oracle result data containing consensus information and price data
+    /// @param batchHeight The height of the SEDA batch containing the result
+    /// @param merkleProof The Merkle proof for verifying the result's inclusion in the batch
+    /// @param targetIndices Array of indices corresponding to the tickers to update
+    /// @dev Indices must be valid (within bounds of the result's ticker array)
+    function submitForIndices(
+        UpdateParams calldata updateParams,
+        SedaDataTypes.Result calldata result,
+        uint64 batchHeight,
+        bytes32[] calldata merkleProof,
+        uint16[] calldata targetIndices
+    ) external {
+        _verifyResult(result, batchHeight, merkleProof);
+        _validateDrId(updateParams, result);
+        _decodeAndProcessForIndices(updateParams, result, targetIndices);
+    }
+
     /// @notice Verifies the consensus result and Merkle proof validity
     /// @param result The oracle result data to verify
     /// @param batchHeight The height of the batch containing the result
@@ -211,45 +231,94 @@ contract PriceFeedAdapter is Ownable {
         UpdateParams calldata updateParams,
         SedaDataTypes.Result calldata result
     ) private {
-        string[] memory symbols = abi.decode(
-            updateParams.execInputs,
-            (string[])
+        (string[] memory symbols, uint256[] memory prices) = _decodeAndValidate(
+            updateParams,
+            result
         );
-        uint256[] memory prices = abi.decode(result.result, (uint256[]));
-
-        if (symbols.length == 0) revert ValidationFailed("Empty tickers");
-        // Invariant: The number of symbols must match the number of prices returned by the Oracle Program.
-        if (symbols.length != prices.length)
-            revert ValidationFailed("Mismatched tickers and prices");
 
         for (uint256 i = 0; i < symbols.length; ++i) {
-            string memory symbol = symbols[i];
-            int256 price = int256(prices[i]);
-            uint256 timestamp = result.blockTimestamp;
+            _processTickerAtIndex(symbols, prices, result, i);
+        }
+    }
 
-            address existingFeed = priceFeedAddresses[symbol];
-            if (existingFeed == address(0)) {
-                priceFeedAddresses[symbol] = _createPriceFeed(symbol);
-                tickers.push(symbol);
-                emit PriceFeedCreated(
-                    symbol,
-                    priceFeedAddresses[symbol],
-                    DEFAULT_DECIMALS
-                );
+    /// @notice Decodes ticker symbols and prices from the result and processes only the specified indices
+    /// @dev This function decodes and validates the symbols and prices from the result,
+    ///      and then processes only the tickers at the specified indices.
+    /// @param updateParams Runtime parameters containing the encoded exec inputs
+    /// @param result The oracle result containing the encoded price data
+    /// @param targetIndices Array of indices corresponding to the tickers to update
+    function _decodeAndProcessForIndices(
+        UpdateParams calldata updateParams,
+        SedaDataTypes.Result calldata result,
+        uint16[] memory targetIndices
+    ) private {
+        (string[] memory symbols, uint256[] memory prices) = _decodeAndValidate(
+            updateParams,
+            result
+        );
+
+        for (uint256 i = 0; i < targetIndices.length; ++i) {
+            if (targetIndices[i] > symbols.length - 1) {
+                revert ValidationFailed("Index out of bounds");
             }
+            _processTickerAtIndex(symbols, prices, result, targetIndices[i]);
+        }
+    }
 
-            PriceFeed(priceFeedAddresses[symbol]).updateResult(
-                price,
-                timestamp
-            );
-            emit ResultVerified(
-                result.drId,
+    /// @notice Decodes and validates the symbols and prices from the result
+    /// @param updateParams Runtime parameters containing the encoded exec inputs
+    /// @param result The oracle result containing the encoded price data
+    /// @return symbols Array of decoded ticker symbols
+    /// @return prices Array of decoded prices
+    function _decodeAndValidate(
+        UpdateParams calldata updateParams,
+        SedaDataTypes.Result calldata result
+    ) private pure returns (string[] memory symbols, uint256[] memory prices) {
+        symbols = abi.decode(updateParams.execInputs, (string[]));
+        prices = abi.decode(result.result, (uint256[]));
+
+        // Invariant Checks:
+        // 1. The number of symbols returned by the Oracle Program must equal the number of prices.
+        // 2. There must be at least one symbol present.
+        if (symbols.length == 0) revert ValidationFailed("Empty tickers");
+        if (symbols.length != prices.length)
+            revert ValidationFailed("Mismatched tickers and prices");
+    }
+
+    /// @notice Processes a single ticker at the specified index
+    /// @param symbols Array of all ticker symbols from the result
+    /// @param prices Array of all prices from the result
+    /// @param result The oracle result containing metadata
+    /// @param index The index of the ticker to process
+    function _processTickerAtIndex(
+        string[] memory symbols,
+        uint256[] memory prices,
+        SedaDataTypes.Result calldata result,
+        uint256 index
+    ) private {
+        string memory symbol = symbols[index];
+        int256 price = int256(prices[index]);
+        uint256 timestamp = result.blockTimestamp;
+
+        address existingFeed = priceFeedAddresses[symbol];
+        if (existingFeed == address(0)) {
+            priceFeedAddresses[symbol] = _createPriceFeed(symbol);
+            tickers.push(symbol);
+            emit PriceFeedCreated(
                 symbol,
-                price,
-                result.blockHeight,
-                msg.sender
+                priceFeedAddresses[symbol],
+                DEFAULT_DECIMALS
             );
         }
+
+        PriceFeed(priceFeedAddresses[symbol]).updateResult(price, timestamp);
+        emit ResultVerified(
+            result.drId,
+            symbol,
+            price,
+            result.blockHeight,
+            msg.sender
+        );
     }
 
     // ============ Factory Functions ============

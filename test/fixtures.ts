@@ -4,14 +4,29 @@ import { ethers } from "hardhat";
 
 // Load the real SEDA data from JSON file
 const loadRealData = () => {
-  return JSON.parse(
-    fs.readFileSync(path.join(__dirname, "dr-valid.json"), "utf8"),
-  );
+  return JSON.parse(fs.readFileSync(path.join(__dirname, "data.json"), "utf8"));
 };
 
 // Valid SEDA data processed for contract consumption
-export const valid = () => {
-  const data = loadRealData();
+export const valid = (index: number = 0) => {
+  const data = loadRealData()[index];
+
+  // Decode the actual prices and symbols using ABI decoder (same as contract)
+  const prices = ethers.AbiCoder.defaultAbiCoder().decode(
+    ["uint256[]"],
+    Buffer.from(data.result.result, "base64"),
+  )[0];
+
+  const symbols = ethers.AbiCoder.defaultAbiCoder().decode(
+    ["string[]"],
+    Buffer.from(data.execInputs, "base64"),
+  )[0];
+
+  // Create expected prices object dynamically
+  const expectedPrices: Record<string, bigint> = {};
+  for (let i = 0; i < symbols.length; i++) {
+    expectedPrices[symbols[i]] = prices[i];
+  }
 
   return {
     sedaResult: {
@@ -40,10 +55,8 @@ export const valid = () => {
       "0x1234567890123456789012345678901234567890123456789012345678901234",
       "0x5678901234567890123456789012345678901234567890123456789012345678",
     ],
-    expectedPrices: {
-      "BTC-USDT": 116556000000n,
-      "ETH-USDT": 3897930000n,
-    },
+    expectedPrices,
+    symbols, // Add symbols to the return object for easy access in tests
     // Raw data for contract deployment
     contractConfig: {
       execProgramId: `0x${data.execProgramId}`,

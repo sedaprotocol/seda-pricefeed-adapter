@@ -102,8 +102,8 @@ describe("PriceFeedAdapter", () => {
     });
   });
 
-  describe("Submit Validation", () => {
-    it("Should process real SEDA result with submitResult", async () => {
+  describe("Submit", () => {
+    it("Should process real results with valid data", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
         deployPriceFeedAdapterFixture,
       );
@@ -127,52 +127,92 @@ describe("PriceFeedAdapter", () => {
         .to.emit(priceFeedAdapter, "ResultVerified")
         .withArgs(
           data.sedaResult.drId,
-          "BTC-USDT",
-          data.expectedPrices["BTC-USDT"],
+          data.symbols[0],
+          data.expectedPrices[data.symbols[0]],
           data.sedaResult.blockHeight,
           owner.address,
-        )
-        .and.to.emit(priceFeedAdapter, "ResultVerified")
-        .withArgs(
-          data.sedaResult.drId,
-          "ETH-USDT",
-          data.expectedPrices["ETH-USDT"],
-          data.sedaResult.blockHeight,
-          owner.address,
-        )
-        .and.to.emit(priceFeedAdapter, "PriceFeedCreated")
-        .withArgs(
-          "BTC-USDT",
-          await priceFeedAdapter.getPriceFeedAddress("BTC-USDT"),
-          6,
-        )
-        .and.to.emit(priceFeedAdapter, "PriceFeedCreated")
-        .withArgs(
-          "ETH-USDT",
-          await priceFeedAdapter.getPriceFeedAddress("ETH-USDT"),
-          6,
         );
 
-      // Verify that both price feeds were created
-      const btcFeedAddr =
-        await priceFeedAdapter.getPriceFeedAddress("BTC-USDT");
-      const ethFeedAddr =
-        await priceFeedAdapter.getPriceFeedAddress("ETH-USDT");
-      expect(btcFeedAddr).to.not.equal(ethers.ZeroAddress);
-      expect(ethFeedAddr).to.not.equal(ethers.ZeroAddress);
+      // Verify that price feeds were created for all symbols
+      for (const symbol of data.symbols) {
+        const feedAddr = await priceFeedAdapter.getPriceFeedAddress(symbol);
+        expect(feedAddr).to.not.equal(ethers.ZeroAddress);
+
+        // Verify the price feed was updated with expected price
+        const feed = await ethers.getContractAt("PriceFeed", feedAddr);
+        const price = await feed.latestAnswer();
+        expect(price).to.equal(data.expectedPrices[symbol]);
+      }
 
       // Verify the tickers were registered
       const tickers = await priceFeedAdapter.getAllTickers();
-      expect(tickers).to.include("BTC-USDT");
-      expect(tickers).to.include("ETH-USDT");
+      for (const symbol of data.symbols) {
+        expect(tickers).to.include(symbol);
+      }
+    });
 
-      // Verify the price feeds were updated with expected prices
-      const btcFeed = await ethers.getContractAt("PriceFeed", btcFeedAddr);
-      const ethFeed = await ethers.getContractAt("PriceFeed", ethFeedAddr);
-      const btcPrice = await btcFeed.latestAnswer();
-      const ethPrice = await ethFeed.latestAnswer();
-      expect(btcPrice).to.equal(data.expectedPrices["BTC-USDT"]);
-      expect(ethPrice).to.equal(data.expectedPrices["ETH-USDT"]);
+    it("Should create price feeds on first submission and reuse on second submission", async () => {
+      const { priceFeedAdapter, mockProver, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      // Get two different data sets
+      const data0 = valid(0);
+      const data1 = valid(1);
+
+      // Set up mock prover to accept both results
+      await mockProver.setBatchValid(data0.batchNumber, true);
+      await mockProver.setBatchValid(data1.batchNumber, true);
+      await mockProver.setDefaultBatchSender(owner.address);
+
+      // First submission - should create price feeds
+      const tx1 = await priceFeedAdapter.submit(
+        data0.updateParams,
+        data0.sedaResult,
+        data0.batchNumber,
+        data0.merkleProof,
+      );
+
+      // Expect PriceFeedCreated events for the first submission
+      await expect(tx1).to.emit(priceFeedAdapter, "PriceFeedCreated");
+
+      // Store the addresses of created feeds
+      const addresses: Record<string, string> = {};
+      for (const symbol of data0.symbols) {
+        addresses[symbol] = await priceFeedAdapter.getPriceFeedAddress(symbol);
+        expect(addresses[symbol]).to.not.equal(ethers.ZeroAddress);
+      }
+
+      // Second submission - should NOT create new price feeds, just update existing ones
+      const tx2 = await priceFeedAdapter.submit(
+        data1.updateParams,
+        data1.sedaResult,
+        data1.batchNumber,
+        data1.merkleProof,
+      );
+
+      // Should NOT emit PriceFeedCreated events for the second submission
+      await expect(tx2).to.not.emit(priceFeedAdapter, "PriceFeedCreated");
+
+      // Verify the same addresses are used (no new contracts created)
+      for (const symbol of data1.symbols) {
+        const currentAddress =
+          await priceFeedAdapter.getPriceFeedAddress(symbol);
+        expect(currentAddress).to.equal(addresses[symbol]);
+      }
+
+      // Verify both submissions updated the price feeds with their respective prices
+      for (const symbol of data1.symbols) {
+        const feed = await ethers.getContractAt("PriceFeed", addresses[symbol]);
+        const price = await feed.latestAnswer();
+        expect(price).to.equal(data1.expectedPrices[symbol]);
+      }
+
+      // Verify all tickers from both submissions are registered
+      const tickers = await priceFeedAdapter.getAllTickers();
+      for (const symbol of [...data0.symbols, ...data1.symbols]) {
+        expect(tickers).to.include(symbol);
+      }
     });
 
     it("Should revert with invalid merkle proof", async () => {
@@ -284,6 +324,75 @@ describe("PriceFeedAdapter", () => {
         .to.be.revertedWithCustomError(priceFeedAdapter, "ValidationFailed")
         .withArgs("Mismatched tickers and prices");
     });
+
+    it("Should revert with empty tickers", async () => {
+      const { priceFeedAdapter, mockProver, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      const data = valid();
+      await mockProver.setBatchValid(data.batchNumber, true);
+      await mockProver.setDefaultBatchSender(owner.address);
+
+      // Modify the execInputs to be empty (no tickers)
+      const modifiedUpdateParams = {
+        ...data.updateParams,
+        execInputs: ethers.AbiCoder.defaultAbiCoder().encode(
+          ["string[]"],
+          [[]],
+        ), // Empty array of strings
+      };
+
+      // Derive the new DR ID using the same logic as the contract
+      const requestInputs = {
+        execProgramId: data.contractConfig.execProgramId,
+        tallyProgramId: data.contractConfig.tallyProgramId,
+        gasPrice: modifiedUpdateParams.gasPrice,
+        execGasLimit: modifiedUpdateParams.execGasLimit,
+        tallyGasLimit: modifiedUpdateParams.tallyGasLimit,
+        replicationFactor: data.contractConfig.replicationFactor,
+        execInputs: modifiedUpdateParams.execInputs, // Empty
+        tallyInputs: data.contractConfig.tallyInputs,
+        consensusFilter: data.contractConfig.consensusFilter,
+        memo: modifiedUpdateParams.memo,
+      };
+
+      // Derive DR ID using the same logic as SedaDataTypes.deriveRequestId
+      const drId = ethers.keccak256(
+        ethers.concat([
+          ethers.keccak256(ethers.toUtf8Bytes("0.0.1")), // VERSION
+          requestInputs.execProgramId,
+          ethers.keccak256(requestInputs.execInputs), // Empty inputs
+          ethers.zeroPadValue(ethers.toBeHex(requestInputs.execGasLimit), 8),
+          requestInputs.tallyProgramId,
+          ethers.keccak256(requestInputs.tallyInputs),
+          ethers.zeroPadValue(ethers.toBeHex(requestInputs.tallyGasLimit), 8),
+          ethers.zeroPadValue(
+            ethers.toBeHex(requestInputs.replicationFactor),
+            2,
+          ),
+          ethers.keccak256(requestInputs.consensusFilter),
+          ethers.zeroPadValue(ethers.toBeHex(requestInputs.gasPrice), 16),
+          ethers.keccak256(requestInputs.memo),
+        ]),
+      );
+
+      const modifiedSedaResult = {
+        ...data.sedaResult,
+        drId: drId,
+      };
+
+      await expect(
+        priceFeedAdapter.submit(
+          modifiedUpdateParams,
+          modifiedSedaResult,
+          data.batchNumber,
+          data.merkleProof,
+        ),
+      )
+        .to.be.revertedWithCustomError(priceFeedAdapter, "ValidationFailed")
+        .withArgs("Empty tickers");
+    });
   });
 
   describe("Registry", () => {
@@ -327,6 +436,16 @@ describe("PriceFeedAdapter", () => {
           "OwnableUnauthorizedAccount",
         )
         .withArgs(user.address);
+    });
+
+    it("Should revert when updating prover to zero address", async () => {
+      const { priceFeedAdapter } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      await expect(
+        priceFeedAdapter.updateProver(ethers.ZeroAddress),
+      ).to.be.revertedWithCustomError(priceFeedAdapter, "InvalidProverAddress");
     });
   });
 
@@ -378,7 +497,6 @@ describe("PriceFeedAdapter", () => {
         "PriceFeed",
         priceFeed,
       );
-      console.log(await priceFeedContract.getAddress());
       const price = await priceFeedContract.latestAnswer();
       expect(price).to.equal(testData.expectedPrices["BTC-USDT"]);
     });
@@ -401,6 +519,194 @@ describe("PriceFeedAdapter", () => {
 
       const implementationAddress = await priceFeedAdapter.getImplementation();
       expect(implementationAddress).to.equal(sedaPriceFeed);
+    });
+  });
+
+  describe("SubmitForIndices", () => {
+    it("Should process only specified indices with submitForIndices", async () => {
+      const { priceFeedAdapter, mockProver, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      const data = valid();
+      await mockProver.setBatchValid(data.batchNumber, true);
+      await mockProver.setDefaultBatchSender(owner.address);
+
+      // Submit only the first ticker (index 0)
+      const tx = await priceFeedAdapter.submitForIndices(
+        data.updateParams,
+        data.sedaResult,
+        data.batchNumber,
+        data.merkleProof,
+        [0], // Only process first ticker
+      );
+
+      await expect(tx)
+        .to.emit(priceFeedAdapter, "ResultVerified")
+        .withArgs(
+          data.sedaResult.drId,
+          data.symbols[0],
+          data.expectedPrices[data.symbols[0]],
+          data.sedaResult.blockHeight,
+          owner.address,
+        );
+
+      // Verify only the first ticker was processed
+      const feedAddr = await priceFeedAdapter.getPriceFeedAddress(
+        data.symbols[0],
+      );
+      expect(feedAddr).to.not.equal(ethers.ZeroAddress);
+
+      // Verify other tickers were not processed
+      for (let i = 1; i < data.symbols.length; i++) {
+        const feedAddr = await priceFeedAdapter.getPriceFeedAddress(
+          data.symbols[i],
+        );
+        expect(feedAddr).to.equal(ethers.ZeroAddress);
+      }
+
+      // Verify only the first ticker was registered
+      const tickers = await priceFeedAdapter.getAllTickers();
+      expect(tickers).to.include(data.symbols[0]);
+      for (let i = 1; i < data.symbols.length; i++) {
+        expect(tickers).to.not.include(data.symbols[i]);
+      }
+
+      // Verify only the first ticker price was updated
+      const firstFeed = await ethers.getContractAt("PriceFeed", feedAddr);
+      expect(await firstFeed.latestAnswer()).to.equal(
+        data.expectedPrices[data.symbols[0]],
+      );
+    });
+
+    it("Should process multiple specific indices", async () => {
+      const { priceFeedAdapter, mockProver, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      const data = valid();
+      await mockProver.setBatchValid(data.batchNumber, true);
+      await mockProver.setDefaultBatchSender(owner.address);
+
+      // Submit both tickers but in reverse order
+      const tx = await priceFeedAdapter.submitForIndices(
+        data.updateParams,
+        data.sedaResult,
+        data.batchNumber,
+        data.merkleProof,
+        [1, 0], // Process second ticker first, then first ticker
+      );
+
+      await expect(tx)
+        .to.emit(priceFeedAdapter, "ResultVerified")
+        .withArgs(
+          data.sedaResult.drId,
+          data.symbols[1],
+          data.expectedPrices[data.symbols[1]],
+          data.sedaResult.blockHeight,
+          owner.address,
+        )
+        .and.to.emit(priceFeedAdapter, "ResultVerified")
+        .withArgs(
+          data.sedaResult.drId,
+          data.symbols[0],
+          data.expectedPrices[data.symbols[0]],
+          data.sedaResult.blockHeight,
+          owner.address,
+        );
+
+      // Verify both were processed
+      for (const symbol of data.symbols) {
+        const feedAddr = await priceFeedAdapter.getPriceFeedAddress(symbol);
+        expect(feedAddr).to.not.equal(ethers.ZeroAddress);
+      }
+
+      // Verify both tickers were registered
+      const tickers = await priceFeedAdapter.getAllTickers();
+      for (const symbol of data.symbols) {
+        expect(tickers).to.include(symbol);
+      }
+    });
+
+    it("Should revert with index out of bounds", async () => {
+      const { priceFeedAdapter, mockProver, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      const data = valid();
+      await mockProver.setBatchValid(data.batchNumber, true);
+      await mockProver.setDefaultBatchSender(owner.address);
+
+      // Try to access index 2 when only 2 tickers exist (indices 0 and 1)
+      await expect(
+        priceFeedAdapter.submitForIndices(
+          data.updateParams,
+          data.sedaResult,
+          data.batchNumber,
+          data.merkleProof,
+          [0, 2], // Index 2 is out of bounds
+        ),
+      )
+        .to.be.revertedWithCustomError(priceFeedAdapter, "ValidationFailed")
+        .withArgs("Index out of bounds");
+    });
+
+    it("Should use same verification logic as submit", async () => {
+      const { priceFeedAdapter, mockProver } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      const data = valid();
+      // Don't set the batch as valid - should fail verification
+      await mockProver.setBatchValid(data.batchNumber, false);
+
+      await expect(
+        priceFeedAdapter.submitForIndices(
+          data.updateParams,
+          data.sedaResult,
+          data.batchNumber,
+          data.merkleProof,
+          [0],
+        ),
+      )
+        .to.be.revertedWithCustomError(priceFeedAdapter, "ValidationFailed")
+        .withArgs("Invalid Merkle proof");
+    });
+
+    it("Should handle empty indices array", async () => {
+      const { priceFeedAdapter, mockProver, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      const data = valid();
+      await mockProver.setBatchValid(data.batchNumber, true);
+      await mockProver.setDefaultBatchSender(owner.address);
+
+      // Submit with empty indices array
+      const tx = await priceFeedAdapter.submitForIndices(
+        data.updateParams,
+        data.sedaResult,
+        data.batchNumber,
+        data.merkleProof,
+        [], // Empty array
+      );
+
+      // Should succeed but not create any price feeds
+      await expect(tx).to.not.emit(priceFeedAdapter, "ResultVerified");
+      await expect(tx).to.not.emit(priceFeedAdapter, "PriceFeedCreated");
+
+      // Verify no price feeds were created
+      const btcFeedAddr =
+        await priceFeedAdapter.getPriceFeedAddress("BTC-USDT");
+      const ethFeedAddr =
+        await priceFeedAdapter.getPriceFeedAddress("ETH-USDT");
+
+      expect(btcFeedAddr).to.equal(ethers.ZeroAddress);
+      expect(ethFeedAddr).to.equal(ethers.ZeroAddress);
+
+      // Verify no tickers were registered
+      const tickers = await priceFeedAdapter.getAllTickers();
+      expect(tickers).to.deep.equal([]);
     });
   });
 });
