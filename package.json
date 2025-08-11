@@ -10,7 +10,8 @@
     "lint:ts": "bunx biome check .",
     "lint:ts:fix": "bunx biome check --write .",
     "test": "bunx hardhat test",
-    "test:coverage": "COVERAGE=true hardhat coverage"
+    "test:coverage": "COVERAGE=true hardhat coverage",
+    "test:gas": "REPORT_GAS=true hardhat test"
   },
   "keywords": [],
   "author": "",
