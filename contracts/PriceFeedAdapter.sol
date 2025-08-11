@@ -211,10 +211,14 @@ contract PriceFeedAdapter is Ownable {
         UpdateParams calldata updateParams,
         SedaDataTypes.Result calldata result
     ) private {
-        string[] memory symbols = abi.decode(updateParams.execInputs, (string[]));
+        string[] memory symbols = abi.decode(
+            updateParams.execInputs,
+            (string[])
+        );
         uint256[] memory prices = abi.decode(result.result, (uint256[]));
 
         if (symbols.length == 0) revert ValidationFailed("Empty tickers");
+        // Invariant: The number of symbols must match the number of prices returned by the Oracle Program.
         if (symbols.length != prices.length)
             revert ValidationFailed("Mismatched tickers and prices");
 
@@ -223,26 +227,21 @@ contract PriceFeedAdapter is Ownable {
             int256 price = int256(prices[i]);
             uint256 timestamp = result.blockTimestamp;
 
-            address pricFeedAddr = priceFeedAddresses[symbol];
-            if (pricFeedAddr == address(0)) {
-                address predicted = Clones.predictDeterministicAddress(
-                    address(implementation),
-                    _saltForTicker(symbol),
-                    address(this)
-                );
-
-                if (predicted.code.length > 0) {
-                    pricFeedAddr = predicted;
-                } else {
-                    pricFeedAddr = _createPriceFeed(symbol);
-                }
-
-                priceFeedAddresses[symbol] = pricFeedAddr;
+            address existingFeed = priceFeedAddresses[symbol];
+            if (existingFeed == address(0)) {
+                priceFeedAddresses[symbol] = _createPriceFeed(symbol);
                 tickers.push(symbol);
-                emit PriceFeedCreated(symbol, pricFeedAddr, DEFAULT_DECIMALS);
+                emit PriceFeedCreated(
+                    symbol,
+                    priceFeedAddresses[symbol],
+                    DEFAULT_DECIMALS
+                );
             }
 
-            PriceFeed(pricFeedAddr).updateResult(price, timestamp);
+            PriceFeed(priceFeedAddresses[symbol]).updateResult(
+                price,
+                timestamp
+            );
             emit ResultVerified(
                 result.drId,
                 symbol,
@@ -328,11 +327,5 @@ contract PriceFeedAdapter is Ownable {
     /// @return The address of the currently configured implementation contract
     function getImplementation() external view returns (address) {
         return address(implementation);
-    }
-
-    /// @notice Retrieves the last batch height from the SEDA prover
-    /// @return The height of the most recent batch processed by the prover
-    function getLastBatchHeight() external view returns (uint64) {
-        return sedaProver.getLastBatchHeight();
     }
 }
