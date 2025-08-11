@@ -15,11 +15,16 @@
   "files": {
     "includes": [
       "**",
-      "!**/artifacts",
-      "!**/cache",
-      "!**/node_modules",
       "!**/*.env",
+      "!**/.coverage_artifacts",
+      "!**/.coverage_cache",
+      "!**/.coverage_contracts",
+      "!**/artifacts",
       "!**/bun.lockb",
+      "!**/cache",
+      "!**/coverage",
+      "!**/coverage.json",
+      "!**/node_modules",
       "!**/typechain-types"
     ]
   }

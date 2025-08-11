@@ -3,12 +3,14 @@
   "version": "0.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "bunx hardhat test",
+    "compile": "bunx hardhat compile",
     "lint": "bun run lint:ts && bun run lint:sol",
     "lint:sol": "solhint 'contracts/**/*.sol' --ignore-path .solhintignore --noPoster",
     "lint:sol:fix": "solhint 'contracts/**/*.sol' --fix --ignore-path .solhintignore --noPrompt --noPoster",
     "lint:ts": "bunx biome check .",
-    "lint:ts:fix": "bunx biome check --write ."
+    "lint:ts:fix": "bunx biome check --write .",
+    "test": "bunx hardhat test",
+    "test:coverage": "COVERAGE=true hardhat coverage"
   },
   "keywords": [],
   "author": "",
@@ -18,7 +20,7 @@
     "@biomejs/biome": "^2.1.2",
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",
     "@types/node": "^24.1.0",
-    "hardhat": "^2.26.1",
+    "hardhat": "^2.26.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3",
     "solhint": "^6.0.0"
