@@ -1,16 +1,15 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import * as fs from "fs";
-import * as path from "path";
 
 // Load the real SEDA data from JSON file
 const data = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "dr-valid.json"), "utf8")
+  fs.readFileSync(path.join(__dirname, "dr-valid.json"), "utf8"),
 );
 
 describe("PriceFeedAdapter - Real SEDA Data Tests", () => {
-
   // Test fixtures for reusable setup with real SEDA data
   async function deployPriceFeedAdapterWithFixture() {
     const [owner, user1, user2, mockProverSigner, batchSender] =
@@ -21,9 +20,9 @@ describe("PriceFeedAdapter - Real SEDA Data Tests", () => {
     const mockProver = await MockSedaProver.deploy();
     await mockProver.waitForDeployment();
 
-    // Deploy the SedaPriceFeed contract
-    const SedaPriceFeed = await ethers.getContractFactory("SedaPriceFeed");
-    const sedaPriceFeed = await SedaPriceFeed.deploy();
+    // Deploy the PriceFeed contract
+    const PriceFeed = await ethers.getContractFactory("PriceFeed");
+    const sedaPriceFeed = await PriceFeed.deploy();
     await sedaPriceFeed.waitForDeployment();
 
     // Deploy the PriceFeedAdapter contract with real program IDs from dr-valid.json
@@ -38,7 +37,9 @@ describe("PriceFeedAdapter - Real SEDA Data Tests", () => {
         tallyProgramId: `0x${data.tallyProgramId}`,
         replicationFactor: data.replicationFactor,
         tallyInputs: data.tallyInputs ? data.tallyInputs : "0x",
-        consensusFilter: data.consensusFilter ? Buffer.from(data.consensusFilter, 'base64') : "0x",
+        consensusFilter: data.consensusFilter
+          ? Buffer.from(data.consensusFilter, "base64")
+          : "0x",
       },
     );
 
@@ -56,39 +57,34 @@ describe("PriceFeedAdapter - Real SEDA Data Tests", () => {
 
   describe("Real SEDA Data Decoding", () => {
     it("Should decode real execInputs correctly", async () => {
-      const { priceFeedAdapter, data } = await loadFixture(
-        deployPriceFeedAdapterWithFixture,
-      );
+      const { data } = await loadFixture(deployPriceFeedAdapterWithFixture);
 
       // Convert base64 execInputs to bytes
-      const execInputsBytes = Buffer.from(data.execInputs, 'base64');
-      
+      const execInputsBytes = Buffer.from(data.execInputs, "base64");
+
       // Test the decodeExecInputs function
-      const tickers = await priceFeedAdapter.decodeExecInputs(execInputsBytes);
+      const abi = new ethers.AbiCoder();
+      const tickers = abi.decode(["string[]"], execInputsBytes)[0];
       expect(tickers).to.deep.equal(["BTC-USDT", "ETH-USDT"]);
     });
 
     it("Should decode real price data correctly", async () => {
-      const { priceFeedAdapter, data } = await loadFixture(
-        deployPriceFeedAdapterWithFixture,
-      );
+      const { data } = await loadFixture(deployPriceFeedAdapterWithFixture);
 
       // Convert base64 result data to bytes
-      const resultBytes = Buffer.from(data.result.result, 'base64');
+      const resultBytes = Buffer.from(data.result.result, "base64");
 
-      // Decode the price
-      const prices = await priceFeedAdapter.decodePriceResult(resultBytes);
+      // Decode the price using abi.decode
+      const abi = new ethers.AbiCoder();
+      const prices = abi.decode(["uint128[]"], resultBytes)[0];
       expect(prices.length).to.equal(2);
       expect(prices).to.deep.equal([116556000000n, 3897930000n]);
     });
 
     it("Should process real SEDA result with submitResult", async () => {
-      const {
-        priceFeedAdapter,
-        mockProver,
-        data,
-        owner,
-      } = await loadFixture(deployPriceFeedAdapterWithFixture);
+      const { priceFeedAdapter, mockProver, data, owner } = await loadFixture(
+        deployPriceFeedAdapterWithFixture,
+      );
 
       // Set up mock prover to accept this result
       await mockProver.setBatchValid(data.batchNumber, true);
@@ -99,17 +95,19 @@ describe("PriceFeedAdapter - Real SEDA Data Tests", () => {
         drId: `0x${data.drId}`,
         gasUsed: BigInt(data.result.gasUsed),
         blockHeight: data.result.blockHeight,
-        blockTimestamp: Math.floor(new Date(data.result.timestamp).getTime() / 1000),
+        blockTimestamp: Math.floor(
+          new Date(data.result.timestamp).getTime() / 1000,
+        ),
         consensus: data.result.consensus,
         exitCode: data.result.exitCode,
         version: data.result.version,
-        result: Buffer.from(data.result.result, 'base64'),
+        result: Buffer.from(data.result.result, "base64"),
         paybackAddress: data.paybackAddress || "0x",
         sedaPayload: data.payload || "0x",
       };
 
       // Convert base64 execInputs to bytes
-      const execInputsBytes = Buffer.from(data.execInputs, 'base64');
+      const execInputsBytes = Buffer.from(data.execInputs, "base64");
 
       // Create merkle proof (mock data since we're using mock prover)
       const merkleProof = [
@@ -125,7 +123,7 @@ describe("PriceFeedAdapter - Real SEDA Data Tests", () => {
             execGasLimit: BigInt(data.execGasLimit),
             tallyGasLimit: BigInt(data.tallyGasLimit),
             execInputs: execInputsBytes,
-            memo: Buffer.from(data.memo, 'base64'),
+            memo: Buffer.from(data.memo, "base64"),
           },
           sedaResult,
           data.batchNumber,
@@ -142,8 +140,10 @@ describe("PriceFeedAdapter - Real SEDA Data Tests", () => {
         );
 
       // Verify that both price feeds were created
-      const btcFeedAddr = await priceFeedAdapter.getPriceFeedAddress("BTC-USDT");
-      const ethFeedAddr = await priceFeedAdapter.getPriceFeedAddress("ETH-USDT");
+      const btcFeedAddr =
+        await priceFeedAdapter.getPriceFeedAddress("BTC-USDT");
+      const ethFeedAddr =
+        await priceFeedAdapter.getPriceFeedAddress("ETH-USDT");
       expect(btcFeedAddr).to.not.equal(ethers.ZeroAddress);
       expect(ethFeedAddr).to.not.equal(ethers.ZeroAddress);
 
@@ -153,8 +153,8 @@ describe("PriceFeedAdapter - Real SEDA Data Tests", () => {
       expect(tickers).to.include("ETH-USDT");
 
       // Verify the price feeds were updated
-      const btcFeed = await ethers.getContractAt("SedaPriceFeed", btcFeedAddr);
-      const ethFeed = await ethers.getContractAt("SedaPriceFeed", ethFeedAddr);
+      const btcFeed = await ethers.getContractAt("PriceFeed", btcFeedAddr);
+      const ethFeed = await ethers.getContractAt("PriceFeed", ethFeedAddr);
       const btcPrice = await btcFeed.latestAnswer();
       const ethPrice = await ethFeed.latestAnswer();
       expect(btcPrice).to.equal(116556000000n);

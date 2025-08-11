@@ -44,8 +44,8 @@ contract MockSedaProver is IProver {
     /// @inheritdoc IProver
     function postBatch(
         SedaDataTypes.Batch calldata newBatch,
-        bytes[] calldata signatures,
-        SedaDataTypes.ValidatorProof[] calldata validatorProofs
+        bytes[] calldata ,
+        SedaDataTypes.ValidatorProof[] calldata 
     ) external {
         // Simple mock implementation
         _validBatches[newBatch.batchHeight] = true;
@@ -61,7 +61,7 @@ contract MockSedaProver is IProver {
     function verifyResultProof(
         bytes32 resultId,
         uint64 batchHeight,
-        bytes32[] calldata merkleProof
+        bytes32[] calldata 
     ) external view returns (bool, address) {
         // Mock implementation that returns true for valid batches
         
