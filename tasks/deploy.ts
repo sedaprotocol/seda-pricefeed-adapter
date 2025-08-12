@@ -29,6 +29,10 @@ sedaScope
     "Existing prover address (deploys mock if not provided)",
   )
   .addOptionalParam(
+    "pricefeed",
+    "Existing PriceFeed implementation address (deploys new if not provided)",
+  )
+  .addOptionalParam(
     "drconfig",
     "JSON DR config file path or inline JSON (mock config if not provided)",
   )
@@ -72,12 +76,18 @@ sedaScope
       console.log(`\n✓ Mock Prover deployed: ${proverAddress}`);
     }
 
-    // Deploy PriceFeed implementation
-    const priceFeedImpl = await hre.ethers
-      .getContractFactory("PriceFeed")
-      .then((f) => f.deploy());
-    const implAddress = await priceFeedImpl.getAddress();
-    console.log(`✓ PriceFeed Implementation deployed: ${implAddress}`);
+    // Get or deploy PriceFeed implementation
+    let implAddress: string;
+    if (taskArgs.pricefeed) {
+      implAddress = taskArgs.pricefeed;
+      console.log(`✓ Using existing PriceFeed Implementation: ${implAddress}`);
+    } else {
+      const priceFeedImpl = await hre.ethers
+        .getContractFactory("PriceFeed")
+        .then((f) => f.deploy());
+      implAddress = await priceFeedImpl.getAddress();
+      console.log(`✓ PriceFeed Implementation deployed: ${implAddress}`);
+    }
 
     // Deploy PriceFeedAdapter proxy (implementation is deployed and used internally)
     const adapter = await hre.upgrades.deployProxy(
