@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "main": "index.js",
   "scripts": {
+    "clean": "rimraf artifacts cache typechain-types coverage",
     "compile": "bunx hardhat compile",
     "lint": "bun run lint:ts && bun run lint:sol",
     "lint:sol": "solhint 'contracts/**/*.sol' --ignore-path .solhintignore --noPoster",
@@ -25,7 +26,9 @@
     "hardhat": "^2.26.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3",
-    "solhint": "^6.0.0"
+    "rimraf": "^6.0.1",
+    "solhint": "^6.0.0",
+    "valibot": "^1.1.0"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
