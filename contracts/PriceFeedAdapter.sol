@@ -25,7 +25,7 @@ import {PriceFeed} from "./PriceFeed.sol";
 ///      All state variables are stored in a single storage slot following ERC-7201 standard to
 ///      prevent storage collisions during upgrades.
 /// @custom:security This contract inherits from OpenZeppelin's upgradeable contracts and includes
-///                   validation of oracle results and administrative controls. The contract is pausable 
+///                   validation of oracle results and administrative controls. The contract is pausable
 ///                   and only the owner can perform administrative functions. All price feed operations
 ///                   are protected by SEDA's consensus mechanism and Merkle proof verification.
 /// @custom:upgrades This contract uses UUPS upgrade pattern and ERC-7201 storage layout.
@@ -153,7 +153,11 @@ contract PriceFeedAdapter is
 
     /// @notice Returns the storage struct at the storage slot
     /// @return s The storage struct containing the contract's state variables
-    function _storageV1() internal pure returns (PriceFeedAdapterStorage storage s) {
+    function _storageV1()
+        internal
+        pure
+        returns (PriceFeedAdapterStorage storage s)
+    {
         bytes32 slot = PRICE_FEED_ADAPTER_V1_STORAGE_SLOT;
         // solhint-disable-next-line no-inline-assembly
         assembly {
@@ -219,8 +223,10 @@ contract PriceFeedAdapter is
         address owner,
         PriceFeedConfig memory _priceFeedConfig
     ) public initializer {
-        if (sedaProverAddress == address(0)) revert ZeroAddressNotAllowed("SEDA prover");
-        if (implementationAddress == address(0)) revert ZeroAddressNotAllowed("implementation");
+        if (sedaProverAddress == address(0))
+            revert ZeroAddressNotAllowed("SEDA prover");
+        if (implementationAddress == address(0))
+            revert ZeroAddressNotAllowed("implementation");
         if (owner == address(0)) revert ZeroAddressNotAllowed("owner");
 
         __Ownable_init(owner);
@@ -331,13 +337,6 @@ contract PriceFeedAdapter is
         if (symbols.length == 0) revert ValidationFailed("Empty tickers");
         if (symbols.length != prices.length)
             revert ValidationFailed("Mismatched tickers and prices");
-
-        // Validate individual data
-        for (uint256 i = 0; i < symbols.length; ++i) {
-            if (bytes(symbols[i]).length == 0)
-                revert ValidationFailed("Empty symbol");
-            if (prices[i] == 0) revert ValidationFailed("Zero price");
-        }
     }
 
     /// @notice Processes a single ticker at the specified index
@@ -425,7 +424,8 @@ contract PriceFeedAdapter is
     /// @notice Updates the SEDA prover contract address (owner only)
     /// @param newProver Address of the new SEDA prover contract
     function updateProver(address newProver) external onlyOwner {
-        if (newProver == address(0)) revert InvalidParameter("Invalid SEDA prover address");
+        if (newProver == address(0))
+            revert InvalidParameter("Invalid SEDA prover address");
         PriceFeedAdapterStorage storage s = _storageV1();
         address oldProver = address(s.sedaProver);
         s.sedaProver = IProver(newProver);
@@ -504,8 +504,11 @@ contract PriceFeedAdapter is
     /// @notice Required by the OZ UUPS module
     /// @dev Only the owner can upgrade the contract
     /// @param newImplementation Address of the new implementation contract
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
-        if (newImplementation == address(0)) revert InvalidParameter("Invalid implementation address");
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner {
+        if (newImplementation == address(0))
+            revert InvalidParameter("Invalid implementation address");
         emit Upgraded(newImplementation);
     }
 

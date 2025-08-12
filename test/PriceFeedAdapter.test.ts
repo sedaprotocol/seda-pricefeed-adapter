@@ -125,6 +125,35 @@ describe("PriceFeedAdapter", () => {
         )
         .withArgs("implementation");
     });
+
+    it("Should revert when initializing with zero owner address", async () => {
+      const MockSedaProver = await ethers.getContractFactory("MockSedaProver");
+      const mockProver = await MockSedaProver.deploy();
+      const PriceFeed = await ethers.getContractFactory("PriceFeed");
+      const sedaPriceFeed = await PriceFeed.deploy();
+      const PriceFeedAdapter =
+        await ethers.getContractFactory("PriceFeedAdapter");
+
+      await expect(
+        upgrades.deployProxy(
+          PriceFeedAdapter,
+          [
+            await mockProver.getAddress(),
+            await sedaPriceFeed.getAddress(),
+            ethers.ZeroAddress,
+            valid().contractConfig,
+          ],
+          {
+            initializer: "initialize",
+          },
+        ),
+      )
+        .to.be.revertedWithCustomError(
+          PriceFeedAdapter,
+          "ZeroAddressNotAllowed",
+        )
+        .withArgs("owner");
+    });
   });
 
   describe("Submit", () => {
@@ -742,6 +771,214 @@ describe("PriceFeedAdapter", () => {
       // Verify no tickers were registered
       const tickers = await priceFeedAdapter.getAllTickers();
       expect(tickers).to.deep.equal([]);
+    });
+  });
+
+  describe("Pause Functions", () => {
+    it("Should allow owner to pause the contract", async () => {
+      const { priceFeedAdapter, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      await expect(priceFeedAdapter.pause())
+        .to.emit(priceFeedAdapter, "Paused")
+        .withArgs(await owner.getAddress());
+    });
+
+    it("Should allow owner to unpause the contract", async () => {
+      const { priceFeedAdapter, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      // First pause
+      await priceFeedAdapter.pause();
+
+      // Then unpause
+      await expect(priceFeedAdapter.unpause())
+        .to.emit(priceFeedAdapter, "Unpaused")
+        .withArgs(await owner.getAddress());
+    });
+
+    it("Should revert when non-owner tries to pause", async () => {
+      const { priceFeedAdapter, user } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      await expect(priceFeedAdapter.connect(user).pause())
+        .to.be.revertedWithCustomError(
+          priceFeedAdapter,
+          "OwnableUnauthorizedAccount",
+        )
+        .withArgs(user.address);
+    });
+
+    it("Should revert when non-owner tries to unpause", async () => {
+      const { priceFeedAdapter, user } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      // First pause as owner
+      await priceFeedAdapter.pause();
+
+      // Then try to unpause as non-owner
+      await expect(priceFeedAdapter.connect(user).unpause())
+        .to.be.revertedWithCustomError(
+          priceFeedAdapter,
+          "OwnableUnauthorizedAccount",
+        )
+        .withArgs(user.address);
+    });
+
+    it("Should revert submit when contract is paused", async () => {
+      const { priceFeedAdapter, mockProver, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      const data = valid();
+      await mockProver.setBatchValid(data.batchNumber, true);
+      await mockProver.setDefaultBatchSender(owner.address);
+
+      // Pause the contract
+      await priceFeedAdapter.pause();
+
+      // Try to submit while paused
+      await expect(
+        priceFeedAdapter.submit(
+          data.updateParams,
+          data.sedaResult,
+          data.batchNumber,
+          data.merkleProof,
+        ),
+      ).to.be.revertedWithCustomError(priceFeedAdapter, "EnforcedPause");
+    });
+
+    it("Should revert submitForIndices when contract is paused", async () => {
+      const { priceFeedAdapter, mockProver, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      const data = valid();
+      await mockProver.setBatchValid(data.batchNumber, true);
+      await mockProver.setDefaultBatchSender(owner.address);
+
+      // Pause the contract
+      await priceFeedAdapter.pause();
+
+      // Try to submitForIndices while paused
+      await expect(
+        priceFeedAdapter.submitForIndices(
+          data.updateParams,
+          data.sedaResult,
+          data.batchNumber,
+          data.merkleProof,
+          [0],
+        ),
+      ).to.be.revertedWithCustomError(priceFeedAdapter, "EnforcedPause");
+    });
+  });
+
+  describe("Storage Access Functions", () => {
+    it("Should return correct storage values", async () => {
+      const { priceFeedAdapter, mockProver, sedaPriceFeed } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      const data = valid();
+
+      // Test public view functions that access storage
+      expect(await priceFeedAdapter.sedaProver()).to.equal(
+        await mockProver.getAddress(),
+      );
+      expect(await priceFeedAdapter.implementation()).to.equal(
+        await sedaPriceFeed.getAddress(),
+      );
+      expect(await priceFeedAdapter.tickers()).to.deep.equal([]);
+
+      const config = await priceFeedAdapter.priceFeedConfig();
+      expect(config.execProgramId).to.equal(data.contractConfig.execProgramId);
+      expect(config.tallyProgramId).to.equal(
+        data.contractConfig.tallyProgramId,
+      );
+      expect(config.replicationFactor).to.equal(
+        data.contractConfig.replicationFactor,
+      );
+      expect(config.tallyInputs).to.equal(data.contractConfig.tallyInputs);
+      // Fix: Convert Buffer to hex string for comparison
+      expect(config.consensusFilter).to.equal(
+        ethers.hexlify(data.contractConfig.consensusFilter),
+      );
+    });
+  });
+
+  describe("Proxy Upgrade", () => {
+    it("Should upgrade the contract", async () => {
+      const { priceFeedAdapter, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      // Deploy a new implementation using the factory
+      const PriceFeedAdapterV2 = (
+        await ethers.getContractFactory("PriceFeedAdapter")
+      ).connect(owner);
+
+      // Upgrade the proxy using Hardhat upgrades
+      const upgradedContract = await upgrades.upgradeProxy(
+        priceFeedAdapter,
+        PriceFeedAdapterV2,
+      );
+
+      // Verify the upgrade was successful by checking if we can call functions
+      expect(await upgradedContract.getProver()).to.equal(
+        await priceFeedAdapter.getProver(),
+      );
+    });
+
+    it("Should revert when non-owner tries to upgrade", async () => {
+      const { priceFeedAdapter, user } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      // Deploy a new implementation using the factory with user account
+      const PriceFeedAdapterV2 = (
+        await ethers.getContractFactory("PriceFeedAdapter")
+      ).connect(user);
+
+      // Try to upgrade as non-owner using the user account
+      await expect(upgrades.upgradeProxy(priceFeedAdapter, PriceFeedAdapterV2))
+        .to.be.revertedWithCustomError(
+          priceFeedAdapter,
+          "OwnableUnauthorizedAccount",
+        )
+        .withArgs(user.address);
+    });
+
+    it("Should revert when upgrading to zero address", async () => {
+      const { priceFeedAdapter } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      // Try to upgrade to zero address directly
+      await expect(priceFeedAdapter.upgradeToAndCall(ethers.ZeroAddress, "0x"))
+        .to.be.revertedWithCustomError(priceFeedAdapter, "InvalidParameter")
+        .withArgs("Invalid implementation address");
+    });
+    it("Should revert when trying to reinitialize", async () => {
+      const { priceFeedAdapter, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      // Try to call initialize again on an already initialized contract
+      await expect(
+        priceFeedAdapter.initialize(
+          await priceFeedAdapter.getProver(),
+          await priceFeedAdapter.getImplementation(),
+          await owner.getAddress(),
+          valid().contractConfig,
+        ),
+      ).to.be.revertedWithCustomError(
+        priceFeedAdapter,
+        "InvalidInitialization",
+      );
     });
   });
 });
