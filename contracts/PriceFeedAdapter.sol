@@ -3,18 +3,63 @@ pragma solidity ^0.8.28;
 
 import {IProver} from "@seda-protocol/evm/contracts/interfaces/IProver.sol";
 import {SedaDataTypes} from "@seda-protocol/evm/contracts/libraries/SedaDataTypes.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {PriceFeed} from "./PriceFeed.sol";
 
 /// @title PriceFeedAdapter
 /// @author Open Oracle Association
-/// @notice A comprehensive adapter contract for managing SEDA oracle price feeds with factory,
+/// @notice A SEDA Price Feed Adapter contract for managing SEDA oracle price feeds with factory,
 ///         registry, and verification capabilities
-/// @dev This contract serves as a central hub for creating and managing PriceFeed proxy
-///      instances using EIP-1167 minimal proxies, verifying oracle results using SEDA's
+/// @dev This contract serves as a central hub for creating and managing PriceFeed instances
+///      using EIP-1167 minimal proxies, verifying oracle results using SEDA's
 ///      consensus mechanism, and maintaining a registry of active price feeds by ticker symbol.
-contract PriceFeedAdapter is Ownable {
+///      It uses ERC-7201 storage pattern for upgradeable safety and implements UUPS upgrade pattern.
+///      The contract is pausable for emergency situations and includes validation
+///      of oracle results including Merkle proofs, consensus verification, and DR ID validation.
+///      Price feeds are created on-demand when first referenced and reused for subsequent updates.
+///      The contract supports both full result processing and selective index-based processing.
+///      All state variables are stored in a single storage slot following ERC-7201 standard to
+///      prevent storage collisions during upgrades.
+/// @custom:security This contract inherits from OpenZeppelin's upgradeable contracts and includes
+///                   validation of oracle results and administrative controls. The contract is pausable 
+///                   and only the owner can perform administrative functions. All price feed operations
+///                   are protected by SEDA's consensus mechanism and Merkle proof verification.
+/// @custom:upgrades This contract uses UUPS upgrade pattern and ERC-7201 storage layout.
+///                   Storage layout is versioned (v1) to prevent collisions during upgrades.
+contract PriceFeedAdapter is
+    Initializable,
+    OwnableUpgradeable,
+    UUPSUpgradeable,
+    PausableUpgradeable
+{
+    // ============ Storage Layout ============
+
+    // Constant storage slot following the ERC-7201 standard
+    bytes32 private constant PRICE_FEED_ADAPTER_V1_STORAGE_SLOT =
+        keccak256(
+            abi.encode(uint256(keccak256("pricefeedadapter.storage.v1")) - 1)
+        ) & ~bytes32(uint256(0xff));
+
+    /// @custom:storage-location pricefeedadapter.storage.v1
+    struct PriceFeedAdapterStorage {
+        // The SEDA SECP256k1 prover contract used for result verification
+        IProver sedaProver;
+        // The implementation contract for PriceFeed proxies (EIP-1167 minimal proxy)
+        PriceFeed implementation;
+        // Mapping from ticker symbol to deployed PriceFeed contract address
+        mapping(string => address) priceFeedAddresses;
+        // Array of all registered ticker symbols
+        string[] tickers;
+        // Stored configuration for SEDA price feed execution
+        PriceFeedConfig priceFeedConfig;
+    }
+
+    // ============ Structs ============
+
     /// @notice Configuration parameters for SEDA price feed execution
     struct PriceFeedConfig {
         /// @notice Identifier of the Execution WASM binary for SEDA oracle execution
@@ -45,13 +90,17 @@ contract PriceFeedAdapter is Ownable {
 
     // ============ Custom Errors ============
 
-    /// @notice Thrown when attempting to set an invalid prover address (zero address)
-    error InvalidProverAddress();
-    /// @notice Thrown when attempting to set an invalid implementation address (zero address)
-    error InvalidImplementationAddress();
-    /// @notice Thrown when validation fails during result processing
+    /// @notice Thrown when result validation fails during processing
     /// @param reason Human-readable description of the validation failure
     error ValidationFailed(string reason);
+
+    /// @notice Thrown when initialization or function parameters are invalid
+    /// @param reason Human-readable description of the parameter error
+    error InvalidParameter(string reason);
+
+    /// @notice Thrown when a zero address is provided where a valid address is required
+    /// @param parameter The name of the parameter that cannot be zero address
+    error ZeroAddressNotAllowed(string parameter);
 
     // ============ Events ============
 
@@ -59,24 +108,28 @@ contract PriceFeedAdapter is Ownable {
     /// @param requestId The unique identifier of the data request
     /// @param symbol The trading symbol (e.g., "ETH/USD")
     /// @param price The decoded price value as a signed integer
-    /// @param blockHeight The height of the SEDA batch containing the result
     /// @param sender The address that posted the result to the blockchain
+    /// @param blockHeight The height of the SEDA batch containing the result
+    /// @param timestamp The timestamp of the result
     event ResultVerified(
         bytes32 indexed requestId,
         string indexed symbol,
         int256 price,
+        address indexed sender,
         uint64 blockHeight,
-        address indexed sender
+        uint256 timestamp
     );
 
     /// @notice Emitted when a new price feed is created and registered
     /// @param ticker The trading symbol (e.g., "ETH/USD")
     /// @param feedAddress The deployed address of the PriceFeed contract
     /// @param decimals The number of decimal places for price precision
+    /// @param timestamp The timestamp of the price feed creation
     event PriceFeedCreated(
         string indexed ticker,
         address indexed feedAddress,
-        uint8 indexed decimals
+        uint8 indexed decimals,
+        uint256 timestamp
     );
 
     /// @notice Emitted when the SEDA prover address is updated by the owner
@@ -92,46 +145,92 @@ contract PriceFeedAdapter is Ownable {
         address indexed existingAddress
     );
 
-    // ============ State Variables ============
+    /// @notice Emitted when the contract is upgraded
+    /// @param implementation The new implementation address
+    event Upgraded(address indexed implementation);
 
-    /// @notice The SEDA SECP256k1 prover contract used for result verification
-    IProver public sedaProver;
+    // ============ Storage Access ============
 
-    /// @notice The implementation contract for PriceFeed proxies (EIP-1167 minimal proxy)
-    PriceFeed public implementation;
+    /// @notice Returns the storage struct at the storage slot
+    /// @return s The storage struct containing the contract's state variables
+    function _storageV1() internal pure returns (PriceFeedAdapterStorage storage s) {
+        bytes32 slot = PRICE_FEED_ADAPTER_V1_STORAGE_SLOT;
+        // solhint-disable-next-line no-inline-assembly
+        assembly {
+            s.slot := slot
+        }
+    }
 
-    /// @notice Mapping from ticker symbol to deployed PriceFeed contract address
-    mapping(string => address) public priceFeedAddresses;
+    // ============ Public View Functions ============
 
-    /// @notice Array of all registered ticker symbols
-    string[] public tickers;
+    /// @notice Returns the SEDA prover contract address
+    /// @return The address of the SEDA prover contract
+    function sedaProver() public view returns (IProver) {
+        return _storageV1().sedaProver;
+    }
+
+    /// @notice Returns the PriceFeed implementation contract address
+    /// @return The address of the PriceFeed implementation contract
+    function implementation() public view returns (PriceFeed) {
+        return _storageV1().implementation;
+    }
+
+    /// @notice Returns the price feed address for a given ticker
+    /// @param ticker The trading symbol to look up
+    /// @return The address of the deployed PriceFeed contract, or zero address if not found
+    function priceFeedAddresses(
+        string memory ticker
+    ) public view returns (address) {
+        return _storageV1().priceFeedAddresses[ticker];
+    }
+
+    /// @notice Returns the array of all registered tickers
+    /// @return Array of all ticker symbols that have been created
+    function tickers() public view returns (string[] memory) {
+        return _storageV1().tickers;
+    }
+
+    /// @notice Returns the price feed configuration
+    /// @return The current price feed configuration
+    function priceFeedConfig() public view returns (PriceFeedConfig memory) {
+        PriceFeedAdapterStorage storage s = _storageV1();
+        return s.priceFeedConfig;
+    }
 
     /// @notice Default number of decimal places for price data precision
     uint8 public constant DEFAULT_DECIMALS = 6;
 
-    /// @notice Stored configuration for SEDA price feed execution
-    PriceFeedConfig public priceFeedConfig;
+    // ============ Initialization ============
 
-    // ============ Constructor ============
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    /// @notice Disables initializers to prevent future reinitialization
+    constructor() {
+        _disableInitializers();
+    }
 
     /// @notice Initializes the PriceFeedAdapter with required contracts and configuration
     /// @param sedaProverAddress Address of the SEDA SECP256k1 prover contract for result verification
     /// @param implementationAddress Address of the PriceFeed implementation contract for proxy creation
     /// @param owner Address that will have administrative privileges over the adapter
     /// @param _priceFeedConfig Configuration parameters for SEDA oracle execution
-    constructor(
+    function initialize(
         address sedaProverAddress,
         address implementationAddress,
         address owner,
         PriceFeedConfig memory _priceFeedConfig
-    ) Ownable(owner) {
-        if (sedaProverAddress == address(0)) revert InvalidProverAddress();
-        if (implementationAddress == address(0))
-            revert InvalidImplementationAddress();
+    ) public initializer {
+        if (sedaProverAddress == address(0)) revert ZeroAddressNotAllowed("SEDA prover");
+        if (implementationAddress == address(0)) revert ZeroAddressNotAllowed("implementation");
+        if (owner == address(0)) revert ZeroAddressNotAllowed("owner");
 
-        sedaProver = IProver(sedaProverAddress);
-        implementation = PriceFeed(implementationAddress);
-        priceFeedConfig = _priceFeedConfig; // Store the inputs
+        __Ownable_init(owner);
+        __UUPSUpgradeable_init();
+        __Pausable_init();
+
+        PriceFeedAdapterStorage storage s = _storageV1();
+        s.sedaProver = IProver(sedaProverAddress);
+        s.implementation = PriceFeed(implementationAddress);
+        s.priceFeedConfig = _priceFeedConfig;
     }
 
     // ============ Core Functions ============
@@ -141,12 +240,13 @@ contract PriceFeedAdapter is Ownable {
     /// @param result The oracle result data containing consensus information and price data
     /// @param batchHeight The height of the SEDA batch containing the result
     /// @param merkleProof The Merkle proof for verifying the result's inclusion in the batch
+    /// @dev Only callable when the contract is not paused
     function submit(
         UpdateParams calldata updateParams,
         SedaDataTypes.Result calldata result,
         uint64 batchHeight,
         bytes32[] calldata merkleProof
-    ) external {
+    ) external whenNotPaused {
         _verifyResult(result, batchHeight, merkleProof);
         _validateDrId(updateParams, result);
         _decodeAndProcess(updateParams, result);
@@ -166,62 +266,10 @@ contract PriceFeedAdapter is Ownable {
         uint64 batchHeight,
         bytes32[] calldata merkleProof,
         uint16[] calldata targetIndices
-    ) external {
+    ) external whenNotPaused {
         _verifyResult(result, batchHeight, merkleProof);
         _validateDrId(updateParams, result);
         _decodeAndProcessForIndices(updateParams, result, targetIndices);
-    }
-
-    /// @notice Verifies the consensus result and Merkle proof validity
-    /// @param result The oracle result data to verify
-    /// @param batchHeight The height of the batch containing the result
-    /// @param merkleProof The Merkle proof for result inclusion verification
-    function _verifyResult(
-        SedaDataTypes.Result calldata result,
-        uint64 batchHeight,
-        bytes32[] calldata merkleProof
-    ) private view {
-        bytes32 resultId = SedaDataTypes.deriveResultId(result);
-        (bool isValid, ) = sedaProver.verifyResultProof(
-            resultId,
-            batchHeight,
-            merkleProof
-        );
-
-        if (!isValid) {
-            revert ValidationFailed("Invalid Merkle proof");
-        }
-
-        if (!(result.consensus && result.exitCode == 0)) {
-            revert ValidationFailed("Invalid consensus or exit code");
-        }
-    }
-
-    /// @notice Validates that the data request ID matches the expected parameters
-    /// @param updateParams Runtime parameters used to reconstruct the expected DR ID
-    /// @param result The oracle result containing the actual DR ID to validate
-    function _validateDrId(
-        UpdateParams calldata updateParams,
-        SedaDataTypes.Result calldata result
-    ) private view {
-        SedaDataTypes.RequestInputs memory dataRequestInputs = SedaDataTypes
-            .RequestInputs({
-                execProgramId: priceFeedConfig.execProgramId,
-                tallyProgramId: priceFeedConfig.tallyProgramId,
-                gasPrice: updateParams.gasPrice,
-                execGasLimit: updateParams.execGasLimit,
-                tallyGasLimit: updateParams.tallyGasLimit,
-                replicationFactor: priceFeedConfig.replicationFactor,
-                execInputs: updateParams.execInputs,
-                tallyInputs: priceFeedConfig.tallyInputs,
-                consensusFilter: priceFeedConfig.consensusFilter,
-                memo: updateParams.memo
-            });
-
-        bytes32 derivedId = SedaDataTypes.deriveRequestId(dataRequestInputs);
-        if (derivedId != result.drId) {
-            revert ValidationFailed("Invalid DR ID");
-        }
     }
 
     /// @notice Decodes ticker symbols and prices from the result and processes each price feed
@@ -283,6 +331,13 @@ contract PriceFeedAdapter is Ownable {
         if (symbols.length == 0) revert ValidationFailed("Empty tickers");
         if (symbols.length != prices.length)
             revert ValidationFailed("Mismatched tickers and prices");
+
+        // Validate individual data
+        for (uint256 i = 0; i < symbols.length; ++i) {
+            if (bytes(symbols[i]).length == 0)
+                revert ValidationFailed("Empty symbol");
+            if (prices[i] == 0) revert ValidationFailed("Zero price");
+        }
     }
 
     /// @notice Processes a single ticker at the specified index
@@ -298,26 +353,30 @@ contract PriceFeedAdapter is Ownable {
     ) private {
         string memory symbol = symbols[index];
         int256 price = int256(prices[index]);
-        uint256 timestamp = result.blockTimestamp;
 
-        address existingFeed = priceFeedAddresses[symbol];
+        PriceFeedAdapterStorage storage s = _storageV1();
+        address existingFeed = s.priceFeedAddresses[symbol];
+
         if (existingFeed == address(0)) {
-            priceFeedAddresses[symbol] = _createPriceFeed(symbol);
-            tickers.push(symbol);
+            existingFeed = _createPriceFeed(symbol);
+            s.priceFeedAddresses[symbol] = existingFeed;
+            s.tickers.push(symbol);
             emit PriceFeedCreated(
                 symbol,
-                priceFeedAddresses[symbol],
-                DEFAULT_DECIMALS
+                existingFeed,
+                DEFAULT_DECIMALS,
+                result.blockTimestamp
             );
         }
 
-        PriceFeed(priceFeedAddresses[symbol]).updateResult(price, timestamp);
+        PriceFeed(existingFeed).updateResult(price, result.blockTimestamp);
         emit ResultVerified(
             result.drId,
             symbol,
             price,
+            msg.sender,
             result.blockHeight,
-            msg.sender
+            result.blockTimestamp
         );
     }
 
@@ -331,7 +390,7 @@ contract PriceFeedAdapter is Ownable {
         string memory symbol
     ) internal returns (address feedAddr) {
         feedAddr = Clones.cloneDeterministic(
-            address(implementation),
+            address(implementation()),
             _saltForTicker(symbol)
         );
         PriceFeed(feedAddr).initialize(address(this), symbol, DEFAULT_DECIMALS);
@@ -345,20 +404,20 @@ contract PriceFeedAdapter is Ownable {
     function getPriceFeedAddress(
         string calldata ticker
     ) external view returns (address) {
-        return priceFeedAddresses[ticker];
+        return priceFeedAddresses(ticker);
     }
 
     /// @notice Retrieves all registered ticker symbols
     /// @return Array of all ticker symbols that have been created
     function getAllTickers() external view returns (string[] memory) {
-        return tickers;
+        return tickers();
     }
 
     /// @notice Checks if a price feed exists for a given ticker symbol
     /// @param ticker The trading symbol to check
     /// @return True if a price feed exists for the ticker, false otherwise
     function hasPriceFeed(string calldata ticker) external view returns (bool) {
-        return priceFeedAddresses[ticker] != address(0);
+        return priceFeedAddresses(ticker) != address(0);
     }
 
     // ============ Owner Functions ============
@@ -366,10 +425,88 @@ contract PriceFeedAdapter is Ownable {
     /// @notice Updates the SEDA prover contract address (owner only)
     /// @param newProver Address of the new SEDA prover contract
     function updateProver(address newProver) external onlyOwner {
-        if (newProver == address(0)) revert InvalidProverAddress();
-        address oldProver = address(sedaProver);
-        sedaProver = IProver(newProver);
+        if (newProver == address(0)) revert InvalidParameter("Invalid SEDA prover address");
+        PriceFeedAdapterStorage storage s = _storageV1();
+        address oldProver = address(s.sedaProver);
+        s.sedaProver = IProver(newProver);
         emit ProverUpdated(oldProver, newProver);
+    }
+
+    /// @notice Verifies the consensus result and Merkle proof validity
+    /// @param result The oracle result data to verify
+    /// @param batchHeight The height of the batch containing the result
+    /// @param merkleProof The Merkle proof for result inclusion verification
+    function _verifyResult(
+        SedaDataTypes.Result calldata result,
+        uint64 batchHeight,
+        bytes32[] calldata merkleProof
+    ) private view {
+        bytes32 resultId = SedaDataTypes.deriveResultId(result);
+        (bool isValid, ) = _storageV1().sedaProver.verifyResultProof(
+            resultId,
+            batchHeight,
+            merkleProof
+        );
+
+        if (!isValid) {
+            revert ValidationFailed("Invalid Merkle proof");
+        }
+
+        if (!(result.consensus && result.exitCode == 0)) {
+            revert ValidationFailed("Invalid consensus or exit code");
+        }
+    }
+
+    /// @notice Validates that the data request ID matches the expected parameters
+    /// @param updateParams Runtime parameters used to reconstruct the expected DR ID
+    /// @param result The oracle result containing the actual DR ID to validate
+    function _validateDrId(
+        UpdateParams calldata updateParams,
+        SedaDataTypes.Result calldata result
+    ) private view {
+        PriceFeedAdapterStorage storage s = _storageV1();
+        SedaDataTypes.RequestInputs memory dataRequestInputs = SedaDataTypes
+            .RequestInputs({
+                execProgramId: s.priceFeedConfig.execProgramId,
+                tallyProgramId: s.priceFeedConfig.tallyProgramId,
+                gasPrice: updateParams.gasPrice,
+                execGasLimit: updateParams.execGasLimit,
+                tallyGasLimit: updateParams.tallyGasLimit,
+                replicationFactor: s.priceFeedConfig.replicationFactor,
+                execInputs: updateParams.execInputs,
+                tallyInputs: s.priceFeedConfig.tallyInputs,
+                consensusFilter: s.priceFeedConfig.consensusFilter,
+                memo: updateParams.memo
+            });
+
+        bytes32 derivedId = SedaDataTypes.deriveRequestId(dataRequestInputs);
+        if (derivedId != result.drId) {
+            revert ValidationFailed("Invalid DR ID");
+        }
+    }
+
+    // ============ Pause Functions ============
+
+    /// @notice Pauses the contract, preventing new price feed submissions (owner only)
+    /// @dev This is an emergency function to stop all price feed updates
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    /// @notice Unpauses the contract, allowing price feed submissions to resume (owner only)
+    /// @dev This function can only be called by the owner
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
+    // ============ UUPS Upgrade Functions ============
+
+    /// @notice Required by the OZ UUPS module
+    /// @dev Only the owner can upgrade the contract
+    /// @param newImplementation Address of the new implementation contract
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
+        if (newImplementation == address(0)) revert InvalidParameter("Invalid implementation address");
+        emit Upgraded(newImplementation);
     }
 
     // ============ Utility Functions ============
@@ -389,12 +526,12 @@ contract PriceFeedAdapter is Ownable {
     /// @notice Retrieves the current SEDA prover contract address
     /// @return The address of the currently configured SEDA prover contract
     function getProver() external view returns (address) {
-        return address(sedaProver);
+        return address(sedaProver());
     }
 
     /// @notice Retrieves the current PriceFeed implementation contract address
     /// @return The address of the currently configured implementation contract
     function getImplementation() external view returns (address) {
-        return address(implementation);
+        return address(implementation());
     }
 }
