@@ -1,6 +1,6 @@
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import {
   invalidConsensus,
   invalidExitCode,
@@ -28,14 +28,20 @@ describe("PriceFeedAdapter", () => {
     // Get the valid data for contract deployment
     const data = valid();
 
-    // Deploy the PriceFeedAdapter contract with real program IDs from dr-valid.json
+    // Deploy the PriceFeedAdapter contract using proxy pattern
     const PriceFeedAdapter =
       await ethers.getContractFactory("PriceFeedAdapter");
-    const priceFeedAdapter = await PriceFeedAdapter.deploy(
-      await mockProver.getAddress(),
-      await sedaPriceFeed.getAddress(),
-      owner.address,
-      data.contractConfig,
+    const priceFeedAdapter = await upgrades.deployProxy(
+      PriceFeedAdapter,
+      [
+        await mockProver.getAddress(),
+        await sedaPriceFeed.getAddress(),
+        owner.address,
+        data.contractConfig,
+      ],
+      {
+        initializer: "initialize",
+      },
     );
 
     return {
@@ -56,21 +62,32 @@ describe("PriceFeedAdapter", () => {
         await ethers.getContractFactory("PriceFeedAdapter");
 
       await expect(
-        PriceFeedAdapter.deploy(
-          ethers.ZeroAddress,
-          await sedaPriceFeed.getAddress(),
-          owner.address,
+        upgrades.deployProxy(
+          PriceFeedAdapter,
+          [
+            ethers.ZeroAddress,
+            await sedaPriceFeed.getAddress(),
+            owner.address,
+            {
+              execProgramId:
+                "0x1234567890123456789012345678901234567890123456789012345678901234",
+              tallyProgramId:
+                "0x5678901234567890123456789012345678901234567890123456789012345678",
+              replicationFactor: 3,
+              tallyInputs: "0x",
+              consensusFilter: "0x",
+            },
+          ],
           {
-            execProgramId:
-              "0x1234567890123456789012345678901234567890123456789012345678901234",
-            tallyProgramId:
-              "0x5678901234567890123456789012345678901234567890123456789012345678",
-            replicationFactor: 3,
-            tallyInputs: "0x",
-            consensusFilter: "0x",
+            initializer: "initialize",
           },
         ),
-      ).to.be.revertedWithCustomError(PriceFeedAdapter, "InvalidProverAddress");
+      )
+        .to.be.revertedWithCustomError(
+          PriceFeedAdapter,
+          "ZeroAddressNotAllowed",
+        )
+        .withArgs("SEDA prover");
     });
 
     it("Should revert with zero implementation address", async () => {
@@ -81,24 +98,32 @@ describe("PriceFeedAdapter", () => {
         await ethers.getContractFactory("PriceFeedAdapter");
 
       await expect(
-        PriceFeedAdapter.deploy(
-          await mockProver.getAddress(),
-          ethers.ZeroAddress,
-          owner.address,
+        upgrades.deployProxy(
+          PriceFeedAdapter,
+          [
+            await mockProver.getAddress(),
+            ethers.ZeroAddress,
+            owner.address,
+            {
+              execProgramId:
+                "0x1234567890123456789012345678901234567890123456789012345678901234",
+              tallyProgramId:
+                "0x5678901234567890123456789012345678901234567890123456789012345678",
+              replicationFactor: 3,
+              tallyInputs: "0x",
+              consensusFilter: "0x",
+            },
+          ],
           {
-            execProgramId:
-              "0x1234567890123456789012345678901234567890123456789012345678901234",
-            tallyProgramId:
-              "0x5678901234567890123456789012345678901234567890123456789012345678",
-            replicationFactor: 3,
-            tallyInputs: "0x",
-            consensusFilter: "0x",
+            initializer: "initialize",
           },
         ),
-      ).to.be.revertedWithCustomError(
-        PriceFeedAdapter,
-        "InvalidImplementationAddress",
-      );
+      )
+        .to.be.revertedWithCustomError(
+          PriceFeedAdapter,
+          "ZeroAddressNotAllowed",
+        )
+        .withArgs("implementation");
     });
   });
 
@@ -129,8 +154,9 @@ describe("PriceFeedAdapter", () => {
           data.sedaResult.drId,
           data.symbols[0],
           data.expectedPrices[data.symbols[0]],
-          data.sedaResult.blockHeight,
           owner.address,
+          data.sedaResult.blockHeight,
+          data.sedaResult.blockTimestamp,
         );
 
       // Verify that price feeds were created for all symbols
@@ -443,9 +469,9 @@ describe("PriceFeedAdapter", () => {
         deployPriceFeedAdapterFixture,
       );
 
-      await expect(
-        priceFeedAdapter.updateProver(ethers.ZeroAddress),
-      ).to.be.revertedWithCustomError(priceFeedAdapter, "InvalidProverAddress");
+      await expect(priceFeedAdapter.updateProver(ethers.ZeroAddress))
+        .to.be.revertedWithCustomError(priceFeedAdapter, "InvalidParameter")
+        .withArgs("Invalid SEDA prover address");
     });
   });
 
@@ -471,11 +497,17 @@ describe("PriceFeedAdapter", () => {
 
       const PriceFeedAdapter =
         await ethers.getContractFactory("PriceFeedAdapter");
-      const priceFeedAdapter = await PriceFeedAdapter.deploy(
-        await mockProver.getAddress(),
-        await sedaPriceFeed.getAddress(),
-        owner.address,
-        testData.contractConfig,
+      const priceFeedAdapter = await upgrades.deployProxy(
+        PriceFeedAdapter,
+        [
+          await mockProver.getAddress(),
+          await sedaPriceFeed.getAddress(),
+          owner.address,
+          testData.contractConfig,
+        ],
+        {
+          initializer: "initialize",
+        },
       );
 
       await mockProver.setBatchValid(testData.batchNumber, true);
@@ -547,8 +579,9 @@ describe("PriceFeedAdapter", () => {
           data.sedaResult.drId,
           data.symbols[0],
           data.expectedPrices[data.symbols[0]],
-          data.sedaResult.blockHeight,
           owner.address,
+          data.sedaResult.blockHeight,
+          data.sedaResult.blockTimestamp,
         );
 
       // Verify only the first ticker was processed
@@ -603,16 +636,18 @@ describe("PriceFeedAdapter", () => {
           data.sedaResult.drId,
           data.symbols[1],
           data.expectedPrices[data.symbols[1]],
-          data.sedaResult.blockHeight,
           owner.address,
+          data.sedaResult.blockHeight,
+          data.sedaResult.blockTimestamp,
         )
         .and.to.emit(priceFeedAdapter, "ResultVerified")
         .withArgs(
           data.sedaResult.drId,
           data.symbols[0],
           data.expectedPrices[data.symbols[0]],
-          data.sedaResult.blockHeight,
           owner.address,
+          data.sedaResult.blockHeight,
+          data.sedaResult.blockTimestamp,
         );
 
       // Verify both were processed
