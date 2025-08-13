@@ -1139,4 +1139,195 @@ describe("PriceFeedAdapter", () => {
       );
     });
   });
+
+  describe("onlyProxy Modifier", () => {
+    it("Should revert when submit is called directly on implementation", async () => {
+      const { priceFeedAdapter, mockProver, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      const data = valid();
+      await mockProver.setBatchValid(data.batchNumber, true);
+      await mockProver.setDefaultBatchSender(owner.address);
+
+      // Get the implementation contract address
+      const implementationAddress =
+        await upgrades.erc1967.getImplementationAddress(
+          await priceFeedAdapter.getAddress(),
+        );
+
+      // Get the implementation contract instance
+      const implementation = await ethers.getContractAt(
+        "PriceFeedAdapter",
+        implementationAddress,
+      );
+
+      // Try to call submit directly on implementation - should revert
+      await expect(
+        implementation.submit(
+          data.updateParams,
+          data.sedaResult,
+          data.batchNumber,
+          data.merkleProof,
+        ),
+      ).to.be.reverted;
+    });
+
+    it("Should revert when submitForIndices is called directly on implementation", async () => {
+      const { priceFeedAdapter, mockProver, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      const data = valid();
+      await mockProver.setBatchValid(data.batchNumber, true);
+      await mockProver.setDefaultBatchSender(owner.address);
+
+      // Get the implementation contract address
+      const implementationAddress =
+        await upgrades.erc1967.getImplementationAddress(
+          await priceFeedAdapter.getAddress(),
+        );
+
+      // Get the implementation contract instance
+      const implementation = await ethers.getContractAt(
+        "PriceFeedAdapter",
+        implementationAddress,
+      );
+
+      // Try to call submitForIndices directly on implementation - should revert
+      await expect(
+        implementation.submitForIndices(
+          data.updateParams,
+          data.sedaResult,
+          data.batchNumber,
+          data.merkleProof,
+          [0],
+        ),
+      ).to.be.reverted;
+    });
+
+    it("Should revert when updateProver is called directly on implementation", async () => {
+      const { priceFeedAdapter, user } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      // Get the implementation contract address
+      const implementationAddress =
+        await upgrades.erc1967.getImplementationAddress(
+          await priceFeedAdapter.getAddress(),
+        );
+
+      // Get the implementation contract instance
+      const implementation = await ethers.getContractAt(
+        "PriceFeedAdapter",
+        implementationAddress,
+      );
+
+      // Try to call updateProver directly on implementation - should revert
+      await expect(implementation.updateProver(user.address)).to.be.reverted;
+    });
+
+    it("Should revert when pause is called directly on implementation", async () => {
+      const { priceFeedAdapter } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      // Get the implementation contract address
+      const implementationAddress =
+        await upgrades.erc1967.getImplementationAddress(
+          await priceFeedAdapter.getAddress(),
+        );
+
+      // Get the implementation contract instance
+      const implementation = await ethers.getContractAt(
+        "PriceFeedAdapter",
+        implementationAddress,
+      );
+
+      // Try to call pause directly on implementation - should revert
+      await expect(implementation.pause()).to.be.reverted;
+    });
+
+    it("Should revert when unpause is called directly on implementation", async () => {
+      const { priceFeedAdapter } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      // Get the implementation contract address
+      const implementationAddress =
+        await upgrades.erc1967.getImplementationAddress(
+          await priceFeedAdapter.getAddress(),
+        );
+
+      // Get the implementation contract instance
+      const implementation = await ethers.getContractAt(
+        "PriceFeedAdapter",
+        implementationAddress,
+      );
+
+      // Try to call unpause directly on implementation - should revert
+      await expect(implementation.unpause()).to.be.reverted;
+    });
+
+    it("Should allow view functions to be called directly on implementation", async () => {
+      const { priceFeedAdapter } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      // Get the implementation contract address
+      const implementationAddress =
+        await upgrades.erc1967.getImplementationAddress(
+          await priceFeedAdapter.getAddress(),
+        );
+
+      // Get the implementation contract instance
+      const implementation = await ethers.getContractAt(
+        "PriceFeedAdapter",
+        implementationAddress,
+      );
+
+      // View functions should work directly on implementation (no onlyProxy modifier)
+      // Note: These will return zero values because the implementation contract
+      // doesn't have the proxy's storage, but they should not revert
+      expect(await implementation.sedaProver()).to.equal(ethers.ZeroAddress);
+      expect(await implementation.implementation()).to.equal(
+        ethers.ZeroAddress,
+      );
+      expect(await implementation.getAllTickers()).to.deep.equal([]);
+      expect(await implementation.hasPriceFeed("BTC-USDT")).to.be.false;
+      expect(await implementation.getProver()).to.equal(ethers.ZeroAddress);
+      expect(await implementation.getImplementation()).to.equal(
+        ethers.ZeroAddress,
+      );
+    });
+
+    it("Should work correctly when called through proxy", async () => {
+      const { priceFeedAdapter, mockProver, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      const data = valid();
+      await mockProver.setBatchValid(data.batchNumber, true);
+      await mockProver.setDefaultBatchSender(owner.address);
+
+      // Call through proxy - should work
+      const tx = await priceFeedAdapter.submit(
+        data.updateParams,
+        data.sedaResult,
+        data.batchNumber,
+        data.merkleProof,
+      );
+
+      await expect(tx)
+        .to.emit(priceFeedAdapter, "ResultVerified")
+        .withArgs(
+          data.sedaResult.drId,
+          data.symbols[0],
+          data.expectedPrices[data.symbols[0]],
+          owner.address,
+          data.sedaResult.blockHeight,
+          data.sedaResult.blockTimestamp,
+        );
+    });
+  });
 });
