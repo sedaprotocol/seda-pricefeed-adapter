@@ -971,6 +971,126 @@ describe("PriceFeedAdapter", () => {
       );
     });
 
+    it("Should allow price feeds to be updated after proxy upgrade", async () => {
+      const { priceFeedAdapter, mockProver, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      // Get initial data and create some price feeds
+      const initialData = valid(0);
+      await mockProver.setBatchValid(initialData.batchNumber, true);
+      await mockProver.setDefaultBatchSender(owner.address);
+
+      // Create initial price feeds
+      await priceFeedAdapter.submit(
+        initialData.updateParams,
+        initialData.sedaResult,
+        initialData.batchNumber,
+        initialData.merkleProof,
+      );
+
+      // Store the addresses of created feeds
+      const feedAddresses: Record<string, string> = {};
+      for (const symbol of initialData.symbols) {
+        feedAddresses[symbol] =
+          await priceFeedAdapter.getPriceFeedAddress(symbol);
+        expect(feedAddresses[symbol]).to.not.equal(ethers.ZeroAddress);
+      }
+
+      // Verify initial prices
+      for (const symbol of initialData.symbols) {
+        const feed = await ethers.getContractAt(
+          "PriceFeed",
+          feedAddresses[symbol],
+        );
+        const price = await feed.latestAnswer();
+        expect(price).to.equal(initialData.expectedPrices[symbol]);
+      }
+
+      // Get the proxy's implementation address before upgrade
+      const proxyImplementationBefore =
+        await upgrades.erc1967.getImplementationAddress(
+          await priceFeedAdapter.getAddress(),
+        );
+
+      // Upgrade the proxy
+      const PriceFeedAdapterV2 = (
+        await ethers.getContractFactory("PriceFeedAdapterV2")
+      ).connect(owner);
+      const upgradedContract = await upgrades.upgradeProxy(
+        priceFeedAdapter,
+        PriceFeedAdapterV2,
+      );
+
+      // Verify that the proxy address stays the same
+      expect(await upgradedContract.getAddress()).to.equal(
+        await priceFeedAdapter.getAddress(),
+      );
+
+      // Verify that the proxy's implementation address has changed
+      const proxyImplementationAfter =
+        await upgrades.erc1967.getImplementationAddress(
+          await upgradedContract.getAddress(),
+        );
+      expect(proxyImplementationAfter).to.not.equal(proxyImplementationBefore);
+
+      // Verify upgrade was successful
+      expect(await upgradedContract.version()).to.equal(2);
+      expect(await upgradedContract.getProver()).to.equal(
+        await priceFeedAdapter.getProver(),
+      );
+
+      // Get new data for updating the price feeds
+      const updateData = valid(1);
+      await mockProver.setBatchValid(updateData.batchNumber, true);
+
+      // Update the price feeds using the upgraded contract
+      const updateTx = await upgradedContract.submit(
+        updateData.updateParams,
+        updateData.sedaResult,
+        updateData.batchNumber,
+        updateData.merkleProof,
+      );
+
+      // Verify the update was successful
+      await expect(updateTx)
+        .to.emit(upgradedContract, "ResultVerified")
+        .withArgs(
+          updateData.sedaResult.drId,
+          updateData.symbols[0],
+          updateData.expectedPrices[updateData.symbols[0]],
+          owner.address,
+          updateData.sedaResult.blockHeight,
+          updateData.sedaResult.blockTimestamp,
+        );
+
+      // Verify the same feed addresses are still used
+      for (const symbol of updateData.symbols) {
+        const currentAddress =
+          await upgradedContract.getPriceFeedAddress(symbol);
+        expect(currentAddress).to.equal(feedAddresses[symbol]);
+      }
+
+      // Verify the price feeds were updated with new prices
+      for (const symbol of updateData.symbols) {
+        const feed = await ethers.getContractAt(
+          "PriceFeed",
+          feedAddresses[symbol],
+        );
+        const updatedPrice = await feed.latestAnswer();
+        expect(updatedPrice).to.equal(updateData.expectedPrices[symbol]);
+
+        // Verify the price actually changed from the initial value
+        expect(updatedPrice).to.not.equal(initialData.expectedPrices[symbol]);
+      }
+
+      // Verify all tickers are still registered
+      const tickers = await upgradedContract.getAllTickers();
+      for (const symbol of [...initialData.symbols, ...updateData.symbols]) {
+        expect(tickers).to.include(symbol);
+      }
+    });
+
     it("Should revert when non-owner tries to upgrade", async () => {
       const { priceFeedAdapter, user } = await loadFixture(
         deployPriceFeedAdapterFixture,
