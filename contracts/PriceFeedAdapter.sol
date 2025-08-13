@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
 import {IProver} from "@seda-protocol/evm/contracts/interfaces/IProver.sol";
 import {SedaDataTypes} from "@seda-protocol/evm/contracts/libraries/SedaDataTypes.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+
 import {PriceFeed} from "./PriceFeed.sol";
+import {PriceFeedAdapterStorage} from "./libraries/PriceFeedAdapterStorage.sol";
 
 /// @title PriceFeedAdapter
 /// @author Open Oracle Association
@@ -40,44 +43,7 @@ contract PriceFeedAdapter is
     
     /// @notice Default number of decimal places for price data precision
     uint8 public constant DEFAULT_DECIMALS = 6;
-
-    // ============ Storage Layout ============
-
-    // Constant storage slot following the ERC-7201 standard
-    bytes32 private constant PRICE_FEED_ADAPTER_V1_STORAGE_SLOT =
-        keccak256(
-            abi.encode(uint256(keccak256("pricefeedadapter.storage.v1")) - 1)
-        ) & ~bytes32(uint256(0xff));
-
-    /// @custom:storage-location pricefeedadapter.storage.v1
-    struct PriceFeedAdapterStorage {
-        // The SEDA SECP256k1 prover contract used for result verification
-        IProver sedaProver;
-        // The implementation contract for PriceFeed proxies (EIP-1167 minimal proxy)
-        PriceFeed implementation;
-        // Mapping from ticker symbol to deployed PriceFeed contract address
-        mapping(string => address) priceFeedAddresses;
-        // Array of all registered ticker symbols
-        string[] tickers;
-        // Stored configuration for SEDA price feed execution
-        PriceFeedConfig priceFeedConfig;
-    }
-
     // ============ Structs ============
-
-    /// @notice Configuration parameters for SEDA price feed execution
-    struct PriceFeedConfig {
-        /// @notice Identifier of the Execution WASM binary for SEDA oracle execution
-        bytes32 execProgramId;
-        /// @notice Identifier of the Tally WASM binary for consensus calculation
-        bytes32 tallyProgramId;
-        /// @notice Number of required DR executors for consensus (replication factor)
-        uint16 replicationFactor;
-        /// @notice Input parameters for the Tally WASM binary execution
-        bytes tallyInputs;
-        /// @notice Consensus filter applied before tally execution to validate results
-        bytes consensusFilter;
-    }
 
     /// @notice Parameters for updating price feed data
     struct UpdateParams {
@@ -142,30 +108,6 @@ contract PriceFeedAdapter is
     /// @param newProver The new prover contract address
     event ProverUpdated(address indexed oldProver, address indexed newProver);
 
-    /// @notice Emitted when attempting to create a duplicate price feed for an existing ticker
-    /// @param ticker The trading symbol that already has a price feed
-    /// @param existingAddress The address of the existing price feed contract
-    event DuplicateFeedAttempt(
-        string indexed ticker,
-        address indexed existingAddress
-    );
-
-    // ============ Storage Access ============
-
-    /// @notice Returns the storage struct at the storage slot
-    /// @return s The storage struct containing the contract's state variables
-    function _storageV1()
-        internal
-        pure
-        returns (PriceFeedAdapterStorage storage s)
-    {
-        bytes32 slot = PRICE_FEED_ADAPTER_V1_STORAGE_SLOT;
-        // solhint-disable-next-line no-inline-assembly
-        assembly {
-            s.slot := slot
-        }
-    }
-
     // ============ Initialization ============
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -176,18 +118,18 @@ contract PriceFeedAdapter is
 
     /// @notice Initializes the PriceFeedAdapter with required contracts and configuration
     /// @param sedaProverAddress Address of the SEDA SECP256k1 prover contract for result verification
-    /// @param implementationAddress Address of the PriceFeed implementation contract for proxy creation
+    /// @param priceFeedImplementation Address of the PriceFeed implementation contract for proxy creation
     /// @param owner Address that will have administrative privileges over the adapter
     /// @param _priceFeedConfig Configuration parameters for SEDA oracle execution
     function initialize(
         address sedaProverAddress,
-        address implementationAddress,
+        address priceFeedImplementation,
         address owner,
-        PriceFeedConfig memory _priceFeedConfig
+        PriceFeedAdapterStorage.PriceFeedConfig memory _priceFeedConfig
     ) public initializer {
         if (sedaProverAddress == address(0))
             revert ZeroAddressNotAllowed("SEDA prover");
-        if (implementationAddress == address(0))
+        if (priceFeedImplementation == address(0))
             revert ZeroAddressNotAllowed("implementation");
         if (owner == address(0)) revert ZeroAddressNotAllowed("owner");
 
@@ -195,9 +137,9 @@ contract PriceFeedAdapter is
         __UUPSUpgradeable_init();
         __Pausable_init();
 
-        PriceFeedAdapterStorage storage s = _storageV1();
-        s.sedaProver = IProver(sedaProverAddress);
-        s.implementation = PriceFeed(implementationAddress);
+        PriceFeedAdapterStorage.Layout storage s = PriceFeedAdapterStorage.layout();
+        s.sedaProver = sedaProverAddress;
+        s.priceFeedImplementation = priceFeedImplementation;
         s.priceFeedConfig = _priceFeedConfig;
     }
 
@@ -295,9 +237,9 @@ contract PriceFeedAdapter is
     function updateProver(address newProver) external onlyProxy onlyOwner {
         if (newProver == address(0))
             revert InvalidParameter("Invalid SEDA prover address");
-        PriceFeedAdapterStorage storage s = _storageV1();
+        PriceFeedAdapterStorage.Layout storage s = PriceFeedAdapterStorage.layout();
         address oldProver = address(s.sedaProver);
-        s.sedaProver = IProver(newProver);
+        s.sedaProver = newProver;
         emit ProverUpdated(oldProver, newProver);
     }
 
@@ -317,14 +259,14 @@ contract PriceFeedAdapter is
 
     /// @notice Returns the SEDA prover contract address
     /// @return The address of the SEDA prover contract
-    function sedaProver() public view returns (IProver) {
-        return _storageV1().sedaProver;
+    function sedaProver() public view returns (address) {
+        return PriceFeedAdapterStorage.layout().sedaProver;
     }
 
     /// @notice Returns the PriceFeed implementation contract address
     /// @return The address of the PriceFeed implementation contract
-    function implementation() public view returns (PriceFeed) {
-        return _storageV1().implementation;
+    function implementation() public view returns (address) {
+        return PriceFeedAdapterStorage.layout().priceFeedImplementation;
     }
 
     /// @notice Returns the price feed address for a given ticker
@@ -333,20 +275,19 @@ contract PriceFeedAdapter is
     function priceFeedAddresses(
         string memory ticker
     ) public view returns (address) {
-        return _storageV1().priceFeedAddresses[ticker];
+        return PriceFeedAdapterStorage.layout().priceFeedAddresses[ticker];
     }
 
     /// @notice Returns the array of all registered tickers
     /// @return Array of all ticker symbols that have been created
     function tickers() public view returns (string[] memory) {
-        return _storageV1().tickers;
+        return PriceFeedAdapterStorage.layout().tickers;
     }
 
     /// @notice Returns the price feed configuration
     /// @return The current price feed configuration
-    function priceFeedConfig() public view returns (PriceFeedConfig memory) {
-        PriceFeedAdapterStorage storage s = _storageV1();
-        return s.priceFeedConfig;
+    function priceFeedConfig() public view returns (PriceFeedAdapterStorage.PriceFeedConfig memory) {
+        return PriceFeedAdapterStorage.layout().priceFeedConfig;
     }
 
     // ============ Internal Functions ============
@@ -462,7 +403,7 @@ contract PriceFeedAdapter is
         string memory symbol = symbols[index];
         int256 price = int256(prices[index]);
 
-        PriceFeedAdapterStorage storage s = _storageV1();
+        PriceFeedAdapterStorage.Layout storage s = PriceFeedAdapterStorage.layout();
         address existingFeed = s.priceFeedAddresses[symbol];
 
         if (existingFeed == address(0)) {
@@ -498,7 +439,7 @@ contract PriceFeedAdapter is
         bytes32[] calldata merkleProof
     ) private view {
         bytes32 resultId = SedaDataTypes.deriveResultId(result);
-        (bool isValid, ) = _storageV1().sedaProver.verifyResultProof(
+        (bool isValid, ) = IProver(PriceFeedAdapterStorage.layout().sedaProver).verifyResultProof(
             resultId,
             batchHeight,
             merkleProof
@@ -520,20 +461,19 @@ contract PriceFeedAdapter is
         UpdateParams calldata updateParams,
         SedaDataTypes.Result calldata result
     ) private view {
-        PriceFeedAdapterStorage storage s = _storageV1();
-        SedaDataTypes.RequestInputs memory dataRequestInputs = SedaDataTypes
-            .RequestInputs({
-                execProgramId: s.priceFeedConfig.execProgramId,
-                tallyProgramId: s.priceFeedConfig.tallyProgramId,
-                gasPrice: updateParams.gasPrice,
-                execGasLimit: updateParams.execGasLimit,
-                tallyGasLimit: updateParams.tallyGasLimit,
-                replicationFactor: s.priceFeedConfig.replicationFactor,
-                execInputs: updateParams.execInputs,
-                tallyInputs: s.priceFeedConfig.tallyInputs,
-                consensusFilter: s.priceFeedConfig.consensusFilter,
-                memo: updateParams.memo
-            });
+        PriceFeedAdapterStorage.Layout storage s = PriceFeedAdapterStorage.layout();
+        SedaDataTypes.RequestInputs memory dataRequestInputs = SedaDataTypes.RequestInputs({
+            execProgramId: s.priceFeedConfig.execProgramId,
+            tallyProgramId: s.priceFeedConfig.tallyProgramId,
+            gasPrice: updateParams.gasPrice,
+            execGasLimit: updateParams.execGasLimit,
+            tallyGasLimit: updateParams.tallyGasLimit,
+            replicationFactor: s.priceFeedConfig.replicationFactor,
+            execInputs: updateParams.execInputs,
+            tallyInputs: s.priceFeedConfig.tallyInputs,
+            consensusFilter: s.priceFeedConfig.consensusFilter,
+            memo: updateParams.memo
+        });
 
         bytes32 derivedId = SedaDataTypes.deriveRequestId(dataRequestInputs);
         if (derivedId != result.drId) {
