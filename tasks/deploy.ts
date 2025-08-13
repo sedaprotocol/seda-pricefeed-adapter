@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { type InferInput, number, object, parse, string } from "valibot";
 import { sedaScope } from ".";
+import { confirmAction } from "./utils/prompts";
 
 const SedaConfigSchema = object({
   execProgramId: string(),
@@ -69,6 +70,22 @@ sedaScope
       proverAddress = taskArgs.prover;
       console.log(`\n✓ Using existing Prover: ${proverAddress}`);
     } else {
+      // Check if we're on a non-local network and no prover provided
+      if (hre.network.name !== "hardhat" && !taskArgs.prover) {
+        const message = `\n⚠️  You're deploying to ${hre.network.name} (Chain ID: ${hre.network.config.chainId})
+   No prover address provided. This will deploy a Mock Prover.
+   Mock provers are intended solely for testing and should never be used in production environments.
+   Do you want to continue?`;
+
+        const confirmed = await confirmAction(message, true);
+        if (!confirmed) {
+          console.log(
+            "\n❌ Deployment cancelled. Please provide a valid prover address with --prover",
+          );
+          process.exit(0);
+        }
+      }
+
       const mockProver = await hre.ethers
         .getContractFactory("MockSedaProver")
         .then((f) => f.deploy());
