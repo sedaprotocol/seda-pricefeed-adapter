@@ -6,3 +6,7 @@ export const sedaScope = scope(
 );
 
 import "./deploy";
+import "./mock-prices";
+import "./pause";
+import "./prices";
+import "./status";
