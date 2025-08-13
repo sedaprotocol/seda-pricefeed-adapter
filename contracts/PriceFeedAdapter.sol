@@ -36,6 +36,11 @@ contract PriceFeedAdapter is
     UUPSUpgradeable,
     PausableUpgradeable
 {
+    // ============ Constants ============
+    
+    /// @notice Default number of decimal places for price data precision
+    uint8 public constant DEFAULT_DECIMALS = 6;
+
     // ============ Storage Layout ============
 
     // Constant storage slot following the ERC-7201 standard
@@ -145,10 +150,6 @@ contract PriceFeedAdapter is
         address indexed existingAddress
     );
 
-    /// @notice Emitted when the contract is upgraded
-    /// @param implementation The new implementation address
-    event Upgraded(address indexed implementation);
-
     // ============ Storage Access ============
 
     /// @notice Returns the storage struct at the storage slot
@@ -164,45 +165,6 @@ contract PriceFeedAdapter is
             s.slot := slot
         }
     }
-
-    // ============ Public View Functions ============
-
-    /// @notice Returns the SEDA prover contract address
-    /// @return The address of the SEDA prover contract
-    function sedaProver() public view returns (IProver) {
-        return _storageV1().sedaProver;
-    }
-
-    /// @notice Returns the PriceFeed implementation contract address
-    /// @return The address of the PriceFeed implementation contract
-    function implementation() public view returns (PriceFeed) {
-        return _storageV1().implementation;
-    }
-
-    /// @notice Returns the price feed address for a given ticker
-    /// @param ticker The trading symbol to look up
-    /// @return The address of the deployed PriceFeed contract, or zero address if not found
-    function priceFeedAddresses(
-        string memory ticker
-    ) public view returns (address) {
-        return _storageV1().priceFeedAddresses[ticker];
-    }
-
-    /// @notice Returns the array of all registered tickers
-    /// @return Array of all ticker symbols that have been created
-    function tickers() public view returns (string[] memory) {
-        return _storageV1().tickers;
-    }
-
-    /// @notice Returns the price feed configuration
-    /// @return The current price feed configuration
-    function priceFeedConfig() public view returns (PriceFeedConfig memory) {
-        PriceFeedAdapterStorage storage s = _storageV1();
-        return s.priceFeedConfig;
-    }
-
-    /// @notice Default number of decimal places for price data precision
-    uint8 public constant DEFAULT_DECIMALS = 6;
 
     // ============ Initialization ============
 
@@ -239,7 +201,7 @@ contract PriceFeedAdapter is
         s.priceFeedConfig = _priceFeedConfig;
     }
 
-    // ============ Core Functions ============
+    // ============ External Functions ============
 
     /// @notice Submits and verifies an oracle result, automatically deploying price feeds as needed
     /// @param updateParams Data Request parameters for the price feed update including gas limits and inputs
@@ -252,7 +214,7 @@ contract PriceFeedAdapter is
         SedaDataTypes.Result calldata result,
         uint64 batchHeight,
         bytes32[] calldata merkleProof
-    ) external whenNotPaused {
+    ) external onlyProxy whenNotPaused {
         _verifyResult(result, batchHeight, merkleProof);
         _validateDrId(updateParams, result);
         _decodeAndProcess(updateParams, result);
@@ -272,11 +234,158 @@ contract PriceFeedAdapter is
         uint64 batchHeight,
         bytes32[] calldata merkleProof,
         uint16[] calldata targetIndices
-    ) external whenNotPaused {
+    ) external onlyProxy whenNotPaused {
         _verifyResult(result, batchHeight, merkleProof);
         _validateDrId(updateParams, result);
         _decodeAndProcessForIndices(updateParams, result, targetIndices);
     }
+
+    /// @notice Retrieves the address of a price feed by its ticker symbol
+    /// @param ticker The trading symbol to look up
+    /// @return The address of the deployed PriceFeed contract, or zero address if not found
+    function getPriceFeedAddress(
+        string calldata ticker
+    ) external view returns (address) {
+        return priceFeedAddresses(ticker);
+    }
+
+    /// @notice Retrieves all registered ticker symbols
+    /// @return Array of all ticker symbols that have been created
+    function getAllTickers() external view returns (string[] memory) {
+        return tickers();
+    }
+
+    /// @notice Checks if a price feed exists for a given ticker symbol
+    /// @param ticker The trading symbol to check
+    /// @return True if a price feed exists for the ticker, false otherwise
+    function hasPriceFeed(string calldata ticker) external view returns (bool) {
+        return priceFeedAddresses(ticker) != address(0);
+    }
+
+    /// @notice Retrieves the current SEDA prover contract address
+    /// @return The address of the currently configured SEDA prover contract
+    function getProver() external view returns (address) {
+        return address(sedaProver());
+    }
+
+    /// @notice Retrieves the current PriceFeed implementation contract address
+    /// @return The address of the currently configured implementation contract
+    function getImplementation() external view returns (address) {
+        return address(implementation());
+    }
+
+    /// @notice Retrieves the latest round data for a given ticker
+    /// @param ticker The trading symbol to look up
+    /// @return roundId The latest round ID
+    /// @return answer The latest answer
+    /// @return startedAt The timestamp when the latest round started
+    /// @return updatedAt The timestamp when the latest round was updated
+    /// @return answeredInRound The round ID in which the latest answer was computed
+    function getLatestRoundData(string calldata ticker) external view returns (
+            uint80 roundId,
+            int256 answer,
+            uint256 startedAt,
+            uint256 updatedAt,
+            uint80 answeredInRound) {
+        return PriceFeed(priceFeedAddresses(ticker)).latestRoundData();
+    }
+
+    /// @notice Updates the SEDA prover contract address (owner only)
+    /// @param newProver Address of the new SEDA prover contract
+    function updateProver(address newProver) external onlyProxy onlyOwner {
+        if (newProver == address(0))
+            revert InvalidParameter("Invalid SEDA prover address");
+        PriceFeedAdapterStorage storage s = _storageV1();
+        address oldProver = address(s.sedaProver);
+        s.sedaProver = IProver(newProver);
+        emit ProverUpdated(oldProver, newProver);
+    }
+
+    /// @notice Pauses the contract, preventing new price feed submissions (owner only)
+    /// @dev This is an emergency function to stop all price feed updates
+    function pause() external onlyProxy onlyOwner {
+        _pause();
+    }
+
+    /// @notice Unpauses the contract, allowing price feed submissions to resume (owner only)
+    /// @dev This function can only be called by the owner
+    function unpause() external onlyProxy onlyOwner {
+        _unpause();
+    }
+
+    // ============ Public Functions ============
+
+    /// @notice Returns the SEDA prover contract address
+    /// @return The address of the SEDA prover contract
+    function sedaProver() public view returns (IProver) {
+        return _storageV1().sedaProver;
+    }
+
+    /// @notice Returns the PriceFeed implementation contract address
+    /// @return The address of the PriceFeed implementation contract
+    function implementation() public view returns (PriceFeed) {
+        return _storageV1().implementation;
+    }
+
+    /// @notice Returns the price feed address for a given ticker
+    /// @param ticker The trading symbol to look up
+    /// @return The address of the deployed PriceFeed contract, or zero address if not found
+    function priceFeedAddresses(
+        string memory ticker
+    ) public view returns (address) {
+        return _storageV1().priceFeedAddresses[ticker];
+    }
+
+    /// @notice Returns the array of all registered tickers
+    /// @return Array of all ticker symbols that have been created
+    function tickers() public view returns (string[] memory) {
+        return _storageV1().tickers;
+    }
+
+    /// @notice Returns the price feed configuration
+    /// @return The current price feed configuration
+    function priceFeedConfig() public view returns (PriceFeedConfig memory) {
+        PriceFeedAdapterStorage storage s = _storageV1();
+        return s.priceFeedConfig;
+    }
+
+    // ============ Internal Functions ============
+
+    /// @notice Creates a new PriceFeed proxy contract for a given ticker symbol
+    /// @param symbol The trading symbol for the new price feed
+    /// @return feedAddr The deployed address of the new PriceFeed contract
+    /// @dev Uses EIP-1167 minimal proxy pattern with deterministic addressing
+    function _createPriceFeed(
+        string memory symbol
+    ) internal returns (address feedAddr) {
+        feedAddr = Clones.cloneDeterministic(
+            address(implementation()),
+            _saltForTicker(symbol)
+        );
+        PriceFeed(feedAddr).initialize(address(this), symbol, DEFAULT_DECIMALS);
+    }
+
+    /// @notice Generates a deterministic salt for a ticker symbol
+    /// @param ticker The trading symbol to generate a salt for
+    /// @return The deterministic salt used for proxy contract deployment
+    /// @dev Uses keccak256 hash of "PriceFeed:" prefix + ticker for deterministic addressing
+    function _saltForTicker(
+        string memory ticker
+    ) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked("PriceFeed:", ticker));
+    }
+
+    /// @notice Required by the OZ UUPS module
+    /// @dev Only the owner can upgrade the contract
+    /// @param newImplementation Address of the new implementation contract
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal view override onlyOwner {
+        if (newImplementation == address(0))
+            revert InvalidParameter("Invalid implementation address");
+    }
+
+    // ============ Private Functions ============
 
     /// @notice Decodes ticker symbols and prices from the result and processes each price feed
     /// @param updateParams Runtime parameters containing the encoded exec inputs
@@ -379,59 +488,6 @@ contract PriceFeedAdapter is
         );
     }
 
-    // ============ Factory Functions ============
-
-    /// @notice Creates a new PriceFeed proxy contract for a given ticker symbol
-    /// @param symbol The trading symbol for the new price feed
-    /// @return feedAddr The deployed address of the new PriceFeed contract
-    /// @dev Uses EIP-1167 minimal proxy pattern with deterministic addressing
-    function _createPriceFeed(
-        string memory symbol
-    ) internal returns (address feedAddr) {
-        feedAddr = Clones.cloneDeterministic(
-            address(implementation()),
-            _saltForTicker(symbol)
-        );
-        PriceFeed(feedAddr).initialize(address(this), symbol, DEFAULT_DECIMALS);
-    }
-
-    // ============ Registry Functions ============
-
-    /// @notice Retrieves the address of a price feed by its ticker symbol
-    /// @param ticker The trading symbol to look up
-    /// @return The address of the deployed PriceFeed contract, or zero address if not found
-    function getPriceFeedAddress(
-        string calldata ticker
-    ) external view returns (address) {
-        return priceFeedAddresses(ticker);
-    }
-
-    /// @notice Retrieves all registered ticker symbols
-    /// @return Array of all ticker symbols that have been created
-    function getAllTickers() external view returns (string[] memory) {
-        return tickers();
-    }
-
-    /// @notice Checks if a price feed exists for a given ticker symbol
-    /// @param ticker The trading symbol to check
-    /// @return True if a price feed exists for the ticker, false otherwise
-    function hasPriceFeed(string calldata ticker) external view returns (bool) {
-        return priceFeedAddresses(ticker) != address(0);
-    }
-
-    // ============ Owner Functions ============
-
-    /// @notice Updates the SEDA prover contract address (owner only)
-    /// @param newProver Address of the new SEDA prover contract
-    function updateProver(address newProver) external onlyOwner {
-        if (newProver == address(0))
-            revert InvalidParameter("Invalid SEDA prover address");
-        PriceFeedAdapterStorage storage s = _storageV1();
-        address oldProver = address(s.sedaProver);
-        s.sedaProver = IProver(newProver);
-        emit ProverUpdated(oldProver, newProver);
-    }
-
     /// @notice Verifies the consensus result and Merkle proof validity
     /// @param result The oracle result data to verify
     /// @param batchHeight The height of the batch containing the result
@@ -483,73 +539,5 @@ contract PriceFeedAdapter is
         if (derivedId != result.drId) {
             revert ValidationFailed("Invalid DR ID");
         }
-    }
-
-    // ============ Pause Functions ============
-
-    /// @notice Pauses the contract, preventing new price feed submissions (owner only)
-    /// @dev This is an emergency function to stop all price feed updates
-    function pause() external onlyOwner {
-        _pause();
-    }
-
-    /// @notice Unpauses the contract, allowing price feed submissions to resume (owner only)
-    /// @dev This function can only be called by the owner
-    function unpause() external onlyOwner {
-        _unpause();
-    }
-
-    // ============ UUPS Upgrade Functions ============
-
-    /// @notice Required by the OZ UUPS module
-    /// @dev Only the owner can upgrade the contract
-    /// @param newImplementation Address of the new implementation contract
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override onlyOwner {
-        if (newImplementation == address(0))
-            revert InvalidParameter("Invalid implementation address");
-        emit Upgraded(newImplementation);
-    }
-
-    // ============ Utility Functions ============
-
-    /// @notice Generates a deterministic salt for a ticker symbol
-    /// @param ticker The trading symbol to generate a salt for
-    /// @return The deterministic salt used for proxy contract deployment
-    /// @dev Uses keccak256 hash of "PriceFeed:" prefix + ticker for deterministic addressing
-    function _saltForTicker(
-        string memory ticker
-    ) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked("PriceFeed:", ticker));
-    }
-
-    // ============ View Functions ============
-
-    /// @notice Retrieves the current SEDA prover contract address
-    /// @return The address of the currently configured SEDA prover contract
-    function getProver() external view returns (address) {
-        return address(sedaProver());
-    }
-
-    /// @notice Retrieves the current PriceFeed implementation contract address
-    /// @return The address of the currently configured implementation contract
-    function getImplementation() external view returns (address) {
-        return address(implementation());
-    }
-
-    /// @notice Retrieves the latest round data for a given ticker
-    /// @param ticker The trading symbol to look up
-    /// @return roundId The latest round ID
-    /// @return answer The latest answer
-    /// @return startedAt The timestamp when the latest round started
-    /// @return updatedAt The timestamp when the latest round was updated
-    /// @return answeredInRound The round ID in which the latest answer was computed
-    function getLatestRoundData(string calldata ticker) external view returns (            uint80 roundId,
-            int256 answer,
-            uint256 startedAt,
-            uint256 updatedAt,
-            uint80 answeredInRound) {
-        return PriceFeed(priceFeedAddresses(ticker)).latestRoundData();
     }
 }
