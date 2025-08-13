@@ -1,347 +1,235 @@
 # SEDA PriceFeedAdapter
 
-A specialized smart contract for verifying SEDA oracle results using cryptographic proofs. This project demonstrates how to integrate with the [SEDA Protocol](https://www.seda.xyz/) oracle network for result verification and event-driven architectures.
+A lightweight, modular price feed system that integrates with the [SEDA Protocol](https://www.seda.xyz/) oracle network. This project provides AggregatorV3Interface-compatible price feeds verified by SEDA's cryptographic proofs.
+
+For detailed technical specifications, see [DESIGN.md](DESIGN.md).
 
 ## 🏗️ Project Overview
 
-The **PriceFeedAdapter** is a verification-oriented contract that focuses on verifying oracle results using cryptographic proofs and emitting verification events.
+The **PriceFeedAdapter** creates and manages on-chain price feeds that are automatically updated when SEDA oracle results are submitted. It uses a proxy-based architecture for gas efficiency and supports batch processing of multiple price feeds.
 
-## 📋 Table of Contents
+## ✨ Key Features
 
-- [What is SEDA?](#what-is-seda)
-- [Features](#features)
-- [Installation & Setup](#installation--setup)
-- [Usage Examples](#usage-examples)
-- [Testing](#testing)
-- [Deployment](#deployment)
-- [Architecture](#architecture)
-- [Contributing](#contributing)
+- **AggregatorV3Interface Compatible**: Seamless integration with DeFi protocols
+- **Automatic Feed Creation**: Price feeds are deployed on-demand when first referenced
+- **Batch Processing**: Update multiple price feeds in a single transaction
+- **Gas Optimized**: Uses EIP-1167 minimal proxies for efficient deployment
+- **Upgradeable**: UUPS upgradeable pattern with ERC-7201 storage layout
+- **Emergency Controls**: Global pause functionality for all operations
 
-## 🌟 What is SEDA?
-
-SEDA is a modular data layer that allows any blockchain to configure its own data feed from scratch. It provides:
-
-- **Decentralized Oracle Network**: Distributed validators provide secure data feeds
-- **Cryptographic Verification**: Results are verified using Merkle proofs and validator consensus
-- **Flexible Data Sources**: Support for price feeds, weather data, sports results, and custom APIs
-- **Cross-Chain Compatibility**: Works across multiple blockchain networks
-
-## ✨ Features
-
-The PriceFeedAdapter provides:
-
-- ✅ **Result Verification**: Cryptographic verification using SEDA provers
-- ✅ **Event Emission**: Real-time verification success/failure events
-- ✅ **Data Integrity**: Consensus and exit code validation
-- ✅ **Price Decoding**: Basic price data extraction from oracle results
-- ✅ **Prover Management**: Owner-controlled prover address updates
-- ✅ **Gas Efficient**: Minimal state changes, focused verification
-- ✅ **Event-Driven**: Perfect for monitoring and integration systems
-
-## 🚀 Installation & Setup
+## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js v18+ (v23 has compatibility warnings)
-- npm or yarn
+- Node.js 18+ 
+- Bun (recommended) or npm
 - Git
 
 ### Installation
 
 ```bash
-# Clone the repository
 git clone <repository-url>
-cd pricefeed
-
-# Install dependencies
-npm install
-
-# Compile contracts
-npx hardhat compile
+cd pricefeed-adapter
+bun install
 ```
 
 ### Environment Setup
 
-Create a `.env` file:
+Create a `.env` file with your configuration:
 
 ```env
-# Network Configuration
-SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/YOUR_INFURA_KEY
-POLYGON_RPC_URL=https://polygon-rpc.com
-PRIVATE_KEY=your_private_key_here
-
-# SEDA Prover Addresses (network-specific)
-SEPOLIA_SEDA_PROVER=0x...
-POLYGON_SEDA_PROVER=0x...
-
-# Block Explorer API Keys
+# Block explorer API key (for contract verification)
 ETHERSCAN_API_KEY=your_etherscan_key
-POLYGONSCAN_API_KEY=your_polygonscan_key
 ```
 
-## 💡 Usage Examples
+### 🛠️ Deployment
 
-The PriceFeedAdapter is a **pure verification contract** focused on validating oracle results:
-
-```typescript
-// Deploy the adapter
-const adapter = await PriceFeedAdapter.deploy(sedaProverAddress, owner);
-
-// 1. Verify a result (view function - no gas cost)
-const [isValid, batchSender] = await adapter.verifyResult(
-  oracleResult,
-  batchHeight, 
-  merkleProof
-);
-
-// 2. Submit and verify a result (emits events)
-const success = await adapter.submitResult(
-  oracleResult,
-  batchHeight, 
-  merkleProof
-);
-// Events emitted: ResultVerified or VerificationFailed
-
-// 3. Decode price data from oracle results
-const price = await adapter.decodePriceResult(resultData);
-
-// 4. Listen to verification events for real-time monitoring
-adapter.on("ResultVerified", (requestId, symbol, price, batchHeight, batchSender) => {
-  console.log(`✅ Verified: ${symbol} = $${ethers.formatUnits(price, 8)}`);
-});
-
-adapter.on("VerificationFailed", (requestId, reason) => {
-  console.log(`❌ Failed: ${requestId} - ${reason}`);
-});
-```
-
-**Key Characteristics:**
-- ✅ **Stateless**: No data storage, pure verification
-- ✅ **Event-driven**: Emits events for external monitoring
-- ✅ **Gas efficient**: Minimal state changes
-- ✅ **Focused**: Does one thing well - cryptographic verification
-
-## 🧪 Testing
-
-Run the comprehensive test suite:
+Deploy the PriceFeedAdapter using the hardhat task:
 
 ```bash
-# Run all tests
-npm test
+# Deploy to network
+bunx hardhat seda deploy [--network networkName]
 
-# Run adapter tests
-npx hardhat test test/PriceFeedAdapter.test.ts
-
-# Run with gas reporting
-REPORT_GAS=true npm test
+# Deploy with custom SEDA configuration
+bunx hardhat seda deploy --drconfig deployments/drconfig.json [--network networkName]
 ```
 
-### Test Coverage
+### 📊 Querying Price Feeds
 
-- **PriceFeedAdapter**: 18 comprehensive tests covering result verification, event emission, prover management
-- **Mock Contracts**: Complete mock prover for isolated testing
-- **Integration Tests**: End-to-end verification workflows
-
-## 🚀 Deployment
-
-### Local Development
+Once deployed, you can interact with the price feeds using the available tasks:
 
 ```bash
-# Deploy to local Hardhat network
-npx hardhat run scripts/deployAdapter.ts --network localhost
+# Check adapter status and configuration
+bunx hardhat seda adapter:status [--network networkName]
 
-# Interact with the contract
-npx hardhat run scripts/interactAdapter.ts
+# List all registered ticker symbols
+bunx hardhat seda adapter:tickers [--network networkName]
+
+# Get prices for all registered tickers
+bunx hardhat seda adapter:prices [--network networkName]
+
+# Get current price for a specific ticker
+bunx hardhat seda adapter:price --ticker BTC-USDT [--network networkName]
+
+# Get the contract address for a specific price feed
+bunx hardhat seda adapter:feed-address --ticker ETH-USD [--network networkName]
 ```
 
-### Testnet Deployment
+##️ Architecture
 
-```bash
-# Deploy to Sepolia
-npx hardhat run scripts/deployAdapter.ts --network sepolia
+### Core Components
 
-# Verify on Etherscan
-npx hardhat verify --network sepolia DEPLOYED_ADDRESS "constructor" "args"
-```
+**PriceFeedAdapter**: The central coordinator that:
+- Deploys new PriceFeed contracts using minimal proxies
+- Maps ticker symbols to their corresponding PriceFeed addresses
+- Verifies SEDA oracle results and updates price feeds
+- Manages SEDA configuration parameters
 
-### Production Deployment
-
-```bash
-# Deploy to mainnet (Polygon example)
-npx hardhat run scripts/deployAdapter.ts --network polygon
-```
-
-## 🏛️ Architecture
-
-### SEDA Protocol Flow
-
-```mermaid
-graph TD
-    A[dApp/Contract] --> B[SEDA Request]
-    B --> C[Oracle Network]
-    C --> D[Data Sources]
-    D --> C
-    C --> E[Consensus]
-    E --> F[Batch Creation]
-    F --> G[Merkle Root]
-    G --> H[On-Chain Proof]
-    H --> I[Result Verification]
-    I --> J[Data Consumer]
-```
-
-### Contract Architecture
-
-```mermaid
-graph LR
-    A[PriceFeedAdapter] --> B[IProver]
-    B --> C[Secp256k1Prover]
-    C --> D[Merkle Verification]
-    A --> E[Event Emission]
-    A --> F[Price Decoding]
-```
+**PriceFeed**: Individual price feed contracts that:
+- Implement the AggregatorV2V3Interface for DeFi compatibility
+- Store latest price data (price, timestamp, round ID)
+- Can only be updated by the designated adapter
+- Use minimal storage for gas efficiency
 
 ### Data Flow
 
-**PriceFeedAdapter Flow:**
-1. External oracle result with proof
-2. Contract verifies proof against prover
-3. Validation of consensus and exit codes
-4. Event emission for verification results
+1. **Oracle Request**: External system requests price data from SEDA
+2. **Result Generation**: SEDA oracle network processes the request and generates results with cryptographic proofs
+3. **Result Submission**: Push-solver submits results to the adapter with Merkle proofs
+4. **Verification**: Adapter verifies the proof and validates consensus requirements
+5. **Price Update**: Adapter updates the corresponding PriceFeed contracts
+6. **DeFi Integration**: DeFi protocols can read prices using standard AggregatorV3Interface calls
 
-## 📁 Project Structure
+### Deployment Pattern
 
+The system uses a proxy-based deployment:
+
+- **PriceFeed Implementation**: Deployed once as the logic contract
+- **PriceFeedAdapter Proxy**: UUPS upgradeable proxy with adapter logic
+- **PriceFeed Proxies**: EIP-1167 minimal proxies created on-demand per ticker
+
+## 🧪 Development
+
+### Testing
+
+```bash
+# Run all tests
+bun test
+
+# Run with gas reporting
+REPORT_GAS=true bun test
+
+# Run specific test file
+bunx hardhat test test/PriceFeedAdapter.test.ts
 ```
-pricefeed/
-├── contracts/
-│   ├── PriceFeedAdapter.sol      # SEDA result verification contract
-│   └── mocks/
-│       └── MockSedaProver.sol    # Mock prover for testing
-├── scripts/
-│   ├── deployAdapter.ts          # Deploy PriceFeedAdapter
-│   └── interactAdapter.ts        # Interact with adapter
-├── test/
-│   └── PriceFeedAdapter.test.ts  # Comprehensive test suite
-└── README.md                     # This file
+
+### Code Linting
+
+```bash
+# Lint Solidity code
+bun run lint:sol
+
+# Lint TypeScript code
+bun run lint:ts
+
+# Fix linting issues
+bun run lint:sol:fix
+bun run lint:ts:fix
 ```
 
-## 🔧 Configuration
+### Mock Price Updates
 
-### Network Configuration
+For testing purposes, you can submit mock price updates:
 
-The project supports multiple networks:
+```bash
+# Submit mock prices for testing
+bunx hardhat seda:mock-prices [--network networkName]
+```
 
-- **Local**: Hardhat network with mock prover
-- **Sepolia**: Ethereum testnet  
-- **Polygon**: Mainnet deployment
-- **Custom**: Add your own network configuration
+## ⚙️ Configuration
 
-### Gas Optimization
+### SEDA Parameters
 
-Both contracts are optimized for gas efficiency:
+The adapter stores configuration for SEDA oracle parameters:
 
-- **Efficient Storage**: Packed structs for minimal storage slots
-- **Batch Operations**: Support for multiple operations
-- **View Functions**: Extensive read-only functions for off-chain queries
+- **Exec Program ID**: SEDA execution program identifier
+- **Tally Program ID**: SEDA tally program identifier
+- **Replication Factor**: Required consensus participants
+- **Tally Inputs**: Input parameters for tally execution
+- **Consensus Filter**: Consensus validation criteria
 
-## 🛡️ Security Considerations
+### Data Encoding
 
-### PriceFeedAdapter Security  
-- ✅ Cryptographic verification of all results
-- ✅ Consensus validation requirements
-- ✅ Batch sender authentication
-- ✅ Timestamp and exit code validation
-- ✅ Owner controls for prover management
-- ✅ Input validation for all external calls
+The system expects specific encoding formats:
 
-### General Security
-- ✅ OpenZeppelin contracts for proven security patterns
-- ✅ Comprehensive test coverage
-- ✅ Static analysis compatibility
-- ✅ Minimal attack surface (stateless design)
+**Execution Inputs**: ABI-encoded `string[]` containing ticker symbols
+```solidity
+["BTC-USDT", "ETH-USD"] // encoded as ABI bytes
+```
 
-## 🌍 Multi-Chain Support
+**Oracle Results**: ABI-encoded `uint256[]` containing price values
+```solidity
+[50000000000, 3000000000] // prices with 6 decimal precision
+```
 
-The contracts are designed for easy multi-chain deployment:
+## 🛡️ Security
 
-- **Ethereum**: Mainnet and testnets
-- **Polygon**: MATIC network support
-- **Arbitrum**: Layer 2 compatibility  
-- **Optimism**: Optimistic rollup support
-- **Custom**: Easy adaptation for other EVM chains
+### Access Control
+- Only the adapter can update price feed data
+- Owner controls for adapter configuration and emergency pause
+- Timestamp validation prevents stale data updates
 
-## 🔮 Future Enhancements
+### Verification
+- Cryptographic verification of all SEDA results
+- Merkle proof validation for batch inclusion
+- Consensus and exit code validation
+- Input validation for all external calls
 
-### Planned Features
-- [ ] **Automated Request Management**: Scheduled price updates
-- [ ] **Advanced Fee Strategies**: Dynamic fee calculation
-- [ ] **Multi-Asset Support**: Portfolio-based price feeds
-- [ ] **Integration Templates**: Ready-to-use DeFi integrations
-- [ ] **Monitoring Dashboard**: Real-time contract monitoring
-- [ ] **Cross-Chain Bridges**: Multi-chain price synchronization
+### Emergency Controls
+- Global pause functionality for all operations
+- Upgradeable architecture with storage collision protection
 
-### Integration Roadmap
-- [ ] **Multi-Prover Support**: Support for multiple verification backends
-- [ ] **Result Aggregation**: Combine verification results from multiple sources
-- [ ] **Advanced Event Filtering**: Enhanced event filtering capabilities
-- [ ] **Verification Analytics**: Built-in metrics and monitoring
+## 🔗 Integration
+
+### DeFi Protocol Integration
+
+Price feeds implement the standard AggregatorV3Interface:
+
+```solidity
+interface AggregatorV3Interface {
+    function latestRoundData() external view returns (
+        uint80 roundId,
+        int256 answer,
+        uint256 startedAt,
+        uint256 updatedAt,
+        uint80 answeredInRound
+    );
+    
+    function decimals() external view returns (uint8);
+    function description() external view returns (string memory);
+    function version() external view returns (uint256);
+}
+```
+
+### Reading Prices
+
+You can read prices either directly from individual PriceFeed contracts or through the adapter:
+
+```solidity
+// Direct from PriceFeed contract
+(uint80 roundId, int256 price, , uint256 updatedAt, ) = priceFeed.latestRoundData();
+
+// Through the adapter
+(uint80 roundId, int256 price, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) = 
+    adapter.getLatestRoundData("BTC-USDT");
+```
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please see our contributing guidelines:
-
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
-4. Add comprehensive tests
-5. Submit a pull request
-
-### Development Setup
-
-```bash
-# Install development dependencies
-npm install --dev
-
-# Run linting
-npm run lint
-
-# Run security analysis
-npm run security
-
-# Generate documentation
-npm run docs
-```
+3. Make your changes with comprehensive tests
+4. Submit a pull request
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-- **Documentation**: [SEDA Protocol Docs](https://docs.seda.xyz)
-- **Discord**: [SEDA Community](https://discord.gg/seda)
-- **GitHub Issues**: For bugs and feature requests
-- **Email**: For private inquiries
-
-## ⚡ Quick Start
-
-```bash
-# 1. Setup project
-git clone <repo> && cd pricefeed && npm install
-
-# 2. Compile contracts  
-npx hardhat compile
-
-# 3. Run tests
-npm test
-
-# 4. Deploy locally
-npx hardhat run scripts/deployAdapter.ts
-
-# 5. Interact with the contract
-npx hardhat run scripts/interactAdapter.ts
-
-# 6. Start building! 🚀
-```
-
----
-
-**Built with ❤️ for the SEDA ecosystem**
+This project is licensed under the ISC License.
