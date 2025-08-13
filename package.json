@@ -1,5 +1,5 @@
 {
-  "name": "pricefeed",
+  "name": "seda-pricefeed-adapter",
   "version": "0.0.0",
   "main": "index.js",
   "scripts": {
@@ -34,5 +34,16 @@
     "@openzeppelin/contracts": "^5.4.0",
     "@openzeppelin/contracts-upgradeable": "^5.4.0",
     "@seda-protocol/evm": "^1.0.0"
-  }
+  },
+  "files": [
+    "/artifacts/contracts/**/*.json",
+    "!/artifacts/contracts/**/*.dbg.json",
+    "!/artifacts/contracts/test/**/*",
+    "/contracts/**/*.sol",
+    "!/contracts/test/**/*",
+    "/typechain-types/**/*.d.ts",
+    "/typechain-types/**/*.ts",
+    "!/typechain-types/contracts/test/**/*",
+    "!/typechain-types/factories/contracts/test/**/*"
+  ]
 }
