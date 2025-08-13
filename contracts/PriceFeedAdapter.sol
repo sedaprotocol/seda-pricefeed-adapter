@@ -537,4 +537,19 @@ contract PriceFeedAdapter is
     function getImplementation() external view returns (address) {
         return address(implementation());
     }
+
+    /// @notice Retrieves the latest round data for a given ticker
+    /// @param ticker The trading symbol to look up
+    /// @return roundId The latest round ID
+    /// @return answer The latest answer
+    /// @return startedAt The timestamp when the latest round started
+    /// @return updatedAt The timestamp when the latest round was updated
+    /// @return answeredInRound The round ID in which the latest answer was computed
+    function getLatestRoundData(string calldata ticker) external view returns (            uint80 roundId,
+            int256 answer,
+            uint256 startedAt,
+            uint256 updatedAt,
+            uint80 answeredInRound) {
+        return PriceFeed(priceFeedAddresses(ticker)).latestRoundData();
+    }
 }

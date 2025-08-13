@@ -910,6 +910,44 @@ describe("PriceFeedAdapter", () => {
     });
   });
 
+  describe("getLatestRoundData", () => {
+    it("Should return correct round data for existing ticker", async () => {
+      const { priceFeedAdapter, mockProver, owner } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      const data = valid();
+      await mockProver.setBatchValid(data.batchNumber, true);
+      await mockProver.setDefaultBatchSender(owner.address);
+
+      // Submit data to create price feeds
+      await priceFeedAdapter.submit(
+        data.updateParams,
+        data.sedaResult,
+        data.batchNumber,
+        data.merkleProof,
+      );
+
+      // Test getLatestRoundData for the first ticker
+      const symbol = data.symbols[0];
+      const roundData = await priceFeedAdapter.getLatestRoundData(symbol);
+
+      // Verify the structure and data
+      expect(roundData.answer).to.equal(data.expectedPrices[symbol]);
+      expect(roundData.roundId).to.be.greaterThan(0);
+      expect(roundData.answeredInRound).to.equal(roundData.roundId);
+    });
+
+    it("Should revert for non-existent ticker", async () => {
+      const { priceFeedAdapter } = await loadFixture(
+        deployPriceFeedAdapterFixture,
+      );
+
+      await expect(priceFeedAdapter.getLatestRoundData("NONEXISTENT-TICKER")).to
+        .be.reverted;
+    });
+  });
+
   describe("Proxy Upgrade", () => {
     it("Should upgrade the contract", async () => {
       const { priceFeedAdapter, owner } = await loadFixture(
