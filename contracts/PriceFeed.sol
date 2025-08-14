@@ -71,11 +71,7 @@ contract PriceFeed is AggregatorV2V3Interface {
     /// @param _updater The address authorized to update price data for this feed
     /// @param _description Human-readable description of the price pair (e.g., "BTC/USD")
     /// @param _decimals Number of decimal places for price precision (typically 8 or 18)
-    function initialize(
-        address _updater,
-        string calldata _description,
-        uint8 _decimals
-    ) external onlyOnce {
+    function initialize(address _updater, string calldata _description, uint8 _decimals) external onlyOnce {
         if (_updater == address(0)) revert InvalidUpdaterAddress();
         updater = _updater;
         description = _description;
@@ -88,13 +84,9 @@ contract PriceFeed is AggregatorV2V3Interface {
     /// @dev Only callable by the designated updater address. Validates timestamp ordering to prevent stale data.
     /// @param value The new price value (can be negative for certain asset types)
     /// @param timestamp Unix timestamp when this price was observed (must be newer than previous update)
-    function updateResult(
-        int256 value,
-        uint256 timestamp
-    ) external onlyUpdater {
+    function updateResult(int256 value, uint256 timestamp) external onlyUpdater {
         // solhint-disable-next-line gas-strict-inequalities
-        if (timestamp <= latestTimestamp)
-            revert StaleResult(timestamp, latestTimestamp);
+        if (timestamp <= latestTimestamp) revert StaleResult(timestamp, latestTimestamp);
 
         latestAnswer = value;
         latestTimestamp = timestamp;
@@ -116,23 +108,11 @@ contract PriceFeed is AggregatorV2V3Interface {
         external
         view
         override
-        returns (
-            uint80 roundId,
-            int256 answer,
-            uint256 startedAt,
-            uint256 updatedAt,
-            uint80 answeredInRound
-        )
+        returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
     {
         if (latestTimestamp == 0) revert NoDataAvailable();
 
-        return (
-            latestRoundId,
-            latestAnswer,
-            latestTimestamp,
-            latestTimestamp,
-            latestRoundId
-        );
+        return (latestRoundId, latestAnswer, latestTimestamp, latestTimestamp, latestRoundId);
     }
 
     /// @notice Returns historical round data (not supported)
@@ -143,14 +123,7 @@ contract PriceFeed is AggregatorV2V3Interface {
     /// @return startedAt The timestamp when the round started
     /// @return updatedAt The timestamp when the round was updated
     /// @return answeredInRound The round ID in which the answer was computed
-    function getRoundData(
-        uint80 _roundId
-    )
-        external
-        pure
-        override
-        returns (uint80, int256, uint256, uint256, uint80)
-    {
+    function getRoundData(uint80 _roundId) external pure override returns (uint80, int256, uint256, uint256, uint80) {
         _roundId; // Suppress unused variable warning
         revert HistoricalDataUnsupported();
     }
@@ -167,9 +140,7 @@ contract PriceFeed is AggregatorV2V3Interface {
     /// @dev This implementation does not store historical data and always reverts
     /// @param roundId The round ID to get the answer for
     /// @return The answer for the given round ID
-    function getAnswer(
-        uint256 roundId
-    ) external pure override returns (int256) {
+    function getAnswer(uint256 roundId) external pure override returns (int256) {
         roundId; // Suppress unused variable warning
         revert HistoricalDataUnsupported();
     }
@@ -178,9 +149,7 @@ contract PriceFeed is AggregatorV2V3Interface {
     /// @dev This implementation does not store historical data and always reverts
     /// @param roundId The round ID to get the timestamp for
     /// @return The timestamp for the given round ID
-    function getTimestamp(
-        uint256 roundId
-    ) external pure override returns (uint256) {
+    function getTimestamp(uint256 roundId) external pure override returns (uint256) {
         roundId; // Suppress unused variable warning
         revert HistoricalDataUnsupported();
     }
