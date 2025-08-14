@@ -13,7 +13,10 @@ import {
   parseConfig,
   printDeploymentSummary,
   printNextSteps,
+  sleep,
 } from "./helpers";
+
+const SLEEP_TIME_MILLIS = 5_000; // 5 seconds
 
 export const defaultConfig: SedaConfig = {
   execProgramId:
@@ -117,6 +120,9 @@ sedaScope
 
     const adapterAddress = await adapter.getAddress();
     console.log(`✓ PriceFeedAdapter Proxy deployed: ${adapterAddress}`);
+
+    // Wait some time to ensure the proxy is deployed
+    await sleep(SLEEP_TIME_MILLIS);
 
     const adapterImplAddress =
       await hre.upgrades.erc1967.getImplementationAddress(adapterAddress);

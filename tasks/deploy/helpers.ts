@@ -127,3 +127,7 @@ export function printNextSteps() {
   console.log("   3. Monitor oracle results");
   console.log(`${"=".repeat(60)}\n`);
 }
+
+export function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
