@@ -14,7 +14,7 @@ The system assumes specific encoding formats for SEDA oracle inputs and outputs:
 - Example: `["BTC-USDT", "ETH-USD"]` encoded as ABI bytes
 
 **Oracle Results (`result.result`):**
-- Must be ABI-encoded as `uint256[]` containing price values
+- Must be ABI-encoded as `int256[]` containing price values
 - Array length must match the input symbols array length
 - Prices are stored as integers with configurable decimal precision (default: 6)
 

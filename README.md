@@ -166,7 +166,7 @@ The system expects specific encoding formats:
 ["BTC-USDT", "ETH-USD"] // encoded as ABI bytes
 ```
 
-**Oracle Results**: ABI-encoded `uint256[]` containing price values
+**Oracle Results**: ABI-encoded `int256[]` containing price values
 ```solidity
 [50000000000, 3000000000] // prices with 6 decimal precision
 ```

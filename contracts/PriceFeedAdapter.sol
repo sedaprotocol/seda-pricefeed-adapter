@@ -298,7 +298,7 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
     /// @return The deterministic salt used for proxy contract deployment
     /// @dev Uses keccak256 hash of "PriceFeed:" prefix + ticker for deterministic addressing
     function _saltForTicker(string memory ticker) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked("PriceFeed:", ticker));
+        return keccak256(abi.encode("PriceFeed:", ticker));
     }
 
     /// @notice Required by the OZ UUPS module
@@ -314,7 +314,7 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
     /// @param updateParams Runtime parameters containing the encoded exec inputs
     /// @param result The oracle result containing the encoded price data
     function _decodeAndProcess(UpdateParams calldata updateParams, SedaDataTypes.Result calldata result) private {
-        (string[] memory symbols, uint256[] memory prices) = _decodeAndValidate(updateParams, result);
+        (string[] memory symbols, int256[] memory prices) = _decodeAndValidate(updateParams, result);
 
         for (uint256 i = 0; i < symbols.length; ++i) {
             _processTickerAtIndex(symbols, prices, result, i);
@@ -332,7 +332,7 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
         SedaDataTypes.Result calldata result,
         uint16[] memory targetIndices
     ) private {
-        (string[] memory symbols, uint256[] memory prices) = _decodeAndValidate(updateParams, result);
+        (string[] memory symbols, int256[] memory prices) = _decodeAndValidate(updateParams, result);
 
         for (uint256 i = 0; i < targetIndices.length; ++i) {
             if (targetIndices[i] > symbols.length - 1) {
@@ -350,9 +350,9 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
     function _decodeAndValidate(
         UpdateParams calldata updateParams,
         SedaDataTypes.Result calldata result
-    ) private pure returns (string[] memory symbols, uint256[] memory prices) {
+    ) private pure returns (string[] memory symbols, int256[] memory prices) {
         symbols = abi.decode(updateParams.execInputs, (string[]));
-        prices = abi.decode(result.result, (uint256[]));
+        prices = abi.decode(result.result, (int256[]));
 
         // Invariant Checks:
         // 1. The number of symbols returned by the Oracle Program must equal the number of prices.
@@ -368,12 +368,12 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
     /// @param index The index of the ticker to process
     function _processTickerAtIndex(
         string[] memory symbols,
-        uint256[] memory prices,
+        int256[] memory prices,
         SedaDataTypes.Result calldata result,
         uint256 index
     ) private {
         string memory symbol = symbols[index];
-        int256 price = int256(prices[index]);
+        int256 price = prices[index];
 
         PriceFeedAdapterStorage.Layout storage s = PriceFeedAdapterStorage.layout();
         address existingFeed = s.priceFeedAddresses[symbol];
