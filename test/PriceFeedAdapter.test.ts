@@ -943,8 +943,9 @@ describe("PriceFeedAdapter", () => {
         deployPriceFeedAdapterFixture,
       );
 
-      await expect(priceFeedAdapter.getLatestRoundData("NONEXISTENT-TICKER")).to
-        .be.reverted;
+      await expect(priceFeedAdapter.getLatestRoundData("NONEXISTENT-TICKER"))
+        .to.be.revertedWithCustomError(priceFeedAdapter, "InvalidParameter")
+        .withArgs("Unknown ticker");
     });
   });
 

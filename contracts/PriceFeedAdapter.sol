@@ -223,12 +223,8 @@ contract PriceFeedAdapter is
     /// @return startedAt The timestamp when the latest round started
     /// @return updatedAt The timestamp when the latest round was updated
     /// @return answeredInRound The round ID in which the latest answer was computed
-    function getLatestRoundData(string calldata ticker) external view returns (
-            uint80 roundId,
-            int256 answer,
-            uint256 startedAt,
-            uint256 updatedAt,
-            uint80 answeredInRound) {
+        address feed = priceFeedAddresses(ticker);
+        if (feed == address(0)) revert InvalidParameter("Unknown ticker");
         return PriceFeed(priceFeedAddresses(ticker)).latestRoundData();
     }
 
