@@ -232,4 +232,4 @@ You can read prices either directly from individual PriceFeed contracts or throu
 
 ## 📄 License
 
-This project is licensed under the ISC License.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
