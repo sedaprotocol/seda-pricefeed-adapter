@@ -12,9 +12,6 @@ pragma solidity ^0.8.28;
 library PriceFeedAdapterStorage {
     // ============ Constants ============
 
-    /// @notice Human-readable storage namespace (version 1)
-    bytes32 internal constant NAMESPACE_V1 = keccak256("pricefeedadapter.storage.v1");
-
     /// @notice ERC-7201 storage slot for PriceFeedAdapter contract (version 1)
     /// @dev Namespace: "pricefeedadapter.storage.v1"
     bytes32 internal constant STORAGE_SLOT_V1 =
@@ -63,12 +60,5 @@ library PriceFeedAdapterStorage {
         assembly {
             s.slot := slot
         }
-    }
-
-    /// @notice Exposes the canonical v1 storage slot
-    /// @dev Useful for testing and tooling
-    /// @return The canonical v1 storage slot
-    function slotV1() internal pure returns (bytes32) {
-        return STORAGE_SLOT_V1;
     }
 }
