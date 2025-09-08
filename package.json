@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "check": "bun run lint && bun run format:sol",
-    "clean": "rimraf artifacts cache typechain-types coverage",
+    "clean": "bunx hardhat clean && rimraf cache coverage",
     "compile": "bunx hardhat compile",
     "format:sol": "prettier --check \"**/*.sol\"",
     "format:sol:fix": "prettier --write \"**/*.sol\"",
@@ -22,15 +22,12 @@
   "license": "MIT",
   "description": "",
   "devDependencies": {
-    "@biomejs/biome": "^2.1.2",
+    "@biomejs/biome": "^2.2.2",
     "@nomicfoundation/hardhat-toolbox": "^6.1.0",
     "@openzeppelin/hardhat-upgrades": "^3.9.1",
-    "@types/node": "^24.1.0",
     "hardhat": "^2.26.3",
     "prettier": "^3.6.2",
     "prettier-plugin-solidity": "^2.1.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.8.3",
     "rimraf": "^6.0.1",
     "solhint": "^6.0.0",
     "valibot": "^1.1.0"
