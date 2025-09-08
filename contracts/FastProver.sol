@@ -7,12 +7,10 @@ import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Pau
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
-import {IProver} from "@seda-protocol/evm/contracts/interfaces/IProver.sol";
-import {SedaDataTypes} from "@seda-protocol/evm/contracts/libraries/SedaDataTypes.sol";
-
-// TODO: Consider using a custom storage slot (e.g., ERC-7201 pattern) for improved upgradeability and storage layout safety.
+// TODO: Consider using ERC-7201 pattern for improved upgradeability and storage layout safety.
 
 /// @title SedaFastProver
+/// @author Open Oracle Association
 /// @notice A UUPS upgradeable, pausable, and ownable contract for verifying price feed data
 ///         using ECDSA signatures from trusted FAST keys
 /// @dev This contract is specifically designed for the SEDA price feed adapter system. It manages
@@ -30,6 +28,9 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
 
     // ============ Custom Errors ============
 
+    /// @notice Thrown when attempting to add a zero address as a trusted key
+    error InvalidKeyAddress();
+
     /// @notice Thrown when attempting to add a duplicate trusted key
     /// @param key The public key that already exists
     error DuplicateTrustedKey(address key);
@@ -39,13 +40,11 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
     error TrustedKeyNotFound(address key);
 
     /// @notice Thrown when signature verification fails (signer not trusted)
-    error SignatureVerificationFailed();
+    /// @param signer The address of the signer that failed verification
+    error SignatureVerificationFailed(address signer);
 
     /// @notice Thrown when attempting to initialize a contract that has already been initialized
     error AlreadyInitialized();
-
-    /// @notice Thrown when attempting to perform an operation with no trusted keys
-    error NoTrustedKeys();
 
     // ============ State Variables ============
 
@@ -78,10 +77,6 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
     /// @notice Initializes the contract with the initial owner
     /// @param initialOwner The address that will be the initial owner
     function initialize(address initialOwner) public initializer {
-        if (initialOwner == address(0)) {
-            revert("Invalid initial owner");
-        }
-
         __Ownable_init(initialOwner);
         __Pausable_init();
         __UUPSUpgradeable_init();
@@ -91,16 +86,18 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
 
     /// @notice Authorizes upgrades (only owner can upgrade)
     /// @param newImplementation The address of the new implementation contract
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner
+    // solhint-disable-next-line no-empty-blocks
+    {
+        
+    }
 
     // ============ Trusted Key Management ============
 
     /// @notice Adds a new trusted public key
     /// @param key The public key to add as trusted
     function addTrustedKey(address key) external onlyOwner whenNotPaused {
-        if (key == address(0)) {
-            revert("Invalid key address");
-        }
+        if (key == address(0)) revert InvalidKeyAddress();
 
         if (trustedKeys[key]) {
             revert DuplicateTrustedKey(key);
@@ -124,7 +121,7 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
         keyExists[key] = false;
 
         // Remove from array by swapping with last element and popping
-        for (uint256 i = 0; i < trustedKeysList.length; i++) {
+        for (uint256 i = 0; i < trustedKeysList.length; ++i) {
             if (trustedKeysList[i] == key) {
                 trustedKeysList[i] = trustedKeysList[trustedKeysList.length - 1];
                 trustedKeysList.pop();
@@ -177,10 +174,6 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
         bytes32 dataHash,
         bytes calldata signature
     ) external view whenNotPaused returns (bool valid, address attester) {
-        if (trustedKeysList.length == 0) {
-            revert NoTrustedKeys();
-        }
-
         return _verifySignature(dataHash, signature);
     }
 
@@ -199,7 +192,7 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
 
         // Check if the signer is a trusted key
         if (!trustedKeys[signer]) {
-            revert SignatureVerificationFailed();
+            revert SignatureVerificationFailed(signer);
         }
 
         return (true, signer);
