@@ -156,6 +156,7 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
         _decodeAndProcess(updateParams, result);
     }
 
+    // TODO: we may want to add a bool to indicate if we want to revert if an update fails
     /// @notice Submits and verifies an oracle result for specific tickers by index,
     ///         automatically deploying price feeds as needed
     /// @param updateParams Data Request parameters for the price feed update including gas limits and inputs
