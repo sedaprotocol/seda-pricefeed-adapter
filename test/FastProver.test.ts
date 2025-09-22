@@ -32,6 +32,14 @@ describe("FastProver", () => {
         }),
       ).to.be.revertedWithCustomError(FastProver, "OwnableInvalidOwner");
     });
+
+    it("Should revert when trying to initialize twice", async () => {
+      const { fastProver, user } = await loadFixture(deployFastProverFixture);
+
+      await expect(
+        fastProver.initialize(user.address),
+      ).to.be.revertedWithCustomError(fastProver, "InvalidInitialization");
+    });
   });
 
   describe("Trusted Key Management", () => {
@@ -51,12 +59,12 @@ describe("FastProver", () => {
       expect(await fastProver.isTrustedKey(trustedKey1.address)).to.be.true;
 
       // Remove key
-      await expect(fastProver.removeTrustedKey(trustedKey1.address))
+      await expect(fastProver.removeTrustedKey(trustedKey2.address))
         .to.emit(fastProver, "TrustedKeyRemoved")
-        .withArgs(trustedKey1.address, owner.address);
+        .withArgs(trustedKey2.address, owner.address);
 
       expect(await fastProver.getTrustedKeysCount()).to.equal(1);
-      expect(await fastProver.isTrustedKey(trustedKey1.address)).to.be.false;
+      expect(await fastProver.isTrustedKey(trustedKey2.address)).to.be.false;
     });
 
     it("Should revert when adding duplicate or zero address", async () => {
@@ -83,6 +91,58 @@ describe("FastProver", () => {
       await expect(
         fastProver.connect(user).addTrustedKey(trustedKey1.address),
       ).to.be.revertedWithCustomError(fastProver, "OwnableUnauthorizedAccount");
+    });
+
+    it("Should revert when non-owner tries to remove keys", async () => {
+      const { fastProver, user, trustedKey1 } = await loadFixture(
+        deployFastProverFixture,
+      );
+
+      // First add the key as owner
+      await fastProver.addTrustedKey(trustedKey1.address);
+
+      // Then try to remove it as non-owner
+      await expect(
+        fastProver.connect(user).removeTrustedKey(trustedKey1.address),
+      ).to.be.revertedWithCustomError(fastProver, "OwnableUnauthorizedAccount");
+    });
+
+    it("Should revert when trying to remove non-existent trusted key", async () => {
+      const { fastProver, trustedKey1 } = await loadFixture(
+        deployFastProverFixture,
+      );
+
+      // Try to remove a key that was never added
+      await expect(
+        fastProver.removeTrustedKey(trustedKey1.address),
+      ).to.be.revertedWithCustomError(fastProver, "TrustedKeyNotFound");
+    });
+
+    it("Should get all trusted keys", async () => {
+      const { fastProver, trustedKey1, trustedKey2 } = await loadFixture(
+        deployFastProverFixture,
+      );
+
+      // Initially no trusted keys
+      expect(await fastProver.getAllTrustedKeys()).to.deep.equal([]);
+
+      // Add first key
+      await fastProver.addTrustedKey(trustedKey1.address);
+      const keysAfterFirst = await fastProver.getAllTrustedKeys();
+      expect(keysAfterFirst).to.deep.equal([trustedKey1.address]);
+
+      // Add second key
+      await fastProver.addTrustedKey(trustedKey2.address);
+      const keysAfterSecond = await fastProver.getAllTrustedKeys();
+      expect(keysAfterSecond).to.deep.equal([
+        trustedKey1.address,
+        trustedKey2.address,
+      ]);
+
+      // Remove first key
+      await fastProver.removeTrustedKey(trustedKey1.address);
+      const keysAfterRemoval = await fastProver.getAllTrustedKeys();
+      expect(keysAfterRemoval).to.deep.equal([trustedKey2.address]);
     });
   });
 
@@ -149,15 +209,64 @@ describe("FastProver", () => {
         .withArgs(owner.address);
     });
 
-    it("Should revert operations when paused", async () => {
+    it("Should revert when non-owner tries to pause", async () => {
+      const { fastProver, user } = await loadFixture(deployFastProverFixture);
+
+      await expect(
+        fastProver.connect(user).pause(),
+      ).to.be.revertedWithCustomError(fastProver, "OwnableUnauthorizedAccount");
+    });
+
+    it("Should revert when non-owner tries to unpause", async () => {
+      const { fastProver, user } = await loadFixture(deployFastProverFixture);
+
+      // First pause as owner
+      await fastProver.pause();
+
+      // Then try to unpause as non-owner
+      await expect(
+        fastProver.connect(user).unpause(),
+      ).to.be.revertedWithCustomError(fastProver, "OwnableUnauthorizedAccount");
+    });
+
+    it("Should allow key management when paused", async () => {
+      const { fastProver, trustedKey1, trustedKey2 } = await loadFixture(
+        deployFastProverFixture,
+      );
+
+      // Add a key first
+      await fastProver.addTrustedKey(trustedKey1.address);
+
+      // Pause the contract
+      await fastProver.pause();
+
+      // Should still be able to add/remove keys when paused
+      await expect(fastProver.addTrustedKey(trustedKey2.address))
+        .to.emit(fastProver, "TrustedKeyAdded")
+        .withArgs(trustedKey2.address, await fastProver.owner());
+
+      await expect(fastProver.removeTrustedKey(trustedKey1.address))
+        .to.emit(fastProver, "TrustedKeyRemoved")
+        .withArgs(trustedKey1.address, await fastProver.owner());
+
+      expect(await fastProver.getTrustedKeysCount()).to.equal(1);
+      expect(await fastProver.isTrustedKey(trustedKey2.address)).to.be.true;
+    });
+
+    it("Should revert verifyData when paused", async () => {
       const { fastProver, trustedKey1 } = await loadFixture(
         deployFastProverFixture,
       );
 
+      await fastProver.addTrustedKey(trustedKey1.address);
       await fastProver.pause();
 
+      const dataHash = ethers.keccak256(ethers.toUtf8Bytes("test data"));
+      const validSig = await trustedKey1.signingKey.sign(dataHash);
+      const validSignature = ethers.Signature.from(validSig).serialized;
+
       await expect(
-        fastProver.addTrustedKey(trustedKey1.address),
+        fastProver.verifyData(dataHash, validSignature),
       ).to.be.revertedWithCustomError(fastProver, "EnforcedPause");
     });
   });
@@ -179,6 +288,21 @@ describe("FastProver", () => {
       expect(await upgradedContract.getTrustedKeysCount()).to.equal(1);
       expect(await upgradedContract.isTrustedKey(trustedKey1.address)).to.be
         .true;
+    });
+
+    it("Should test _authorizeUpgrade onlyOwner modifier through upgrade", async () => {
+      const { fastProver, user } = await loadFixture(deployFastProverFixture);
+
+      // The _authorizeUpgrade function is internal and only called during upgrades
+      // We test that the upgrade process works for the owner (which calls _authorizeUpgrade)
+      const FastProverV2 = (
+        await ethers.getContractFactory("FastProver")
+      ).connect(user);
+
+      // Try to upgrade as non-owner using the user account
+      await expect(upgrades.upgradeProxy(fastProver, FastProverV2))
+        .to.be.revertedWithCustomError(fastProver, "OwnableUnauthorizedAccount")
+        .withArgs(user.address);
     });
   });
 });
