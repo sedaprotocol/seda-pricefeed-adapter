@@ -160,6 +160,9 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
     }
 
     /// @notice Computes the composed price id from program ids and a raw feed id
+    /// @param programConfig The program configuration
+    /// @param rawId The raw feed id
+    /// @return The composed price id, derived from oracle program ids and raw feed id
     function _computePriceId(ProgramConfig memory programConfig, bytes32 rawId) internal pure returns (bytes32) {
         // IMPORTANT: Pyth priceId is unique in Pyth. In SEDA we make it unique per program pair.
         return keccak256(abi.encode(programConfig.execProgramId, programConfig.tallyProgramId, rawId));
@@ -181,7 +184,7 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
         }
     }
 
-    /// Verifies a SignedPayload and decodes it into (ProgramConfig, PriceUpdate[], Result)
+    /// @notice Verifies a SignedPayload and decodes it into (ProgramConfig, PriceUpdate[], Result)
     /// @param signedPayload The signed payload to verify and decode
     /// @return programConfig The program configuration
     /// @return updates The price updates array
@@ -207,21 +210,26 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
         if (updates.length == 0) revert ValidationFailed("Empty batch");
     }
 
-    /// Single writer with strict/permissive semantics.
-    /// - strict=false → skip on older/equal (batch ingest)
-    /// - strict=true  → revert on older/equal (parse* store-if-fresh paths)
+    /// @notice Updates price information with time-based validation
+    /// @param priceId The unique identifier for the price feed
+    /// @param newInfo The new price information to store
+    /// @param strict Whether to enforce strict time validation
+    /// @dev strict=false: Allow updates only if newInfo.publishTime > existing.publishTime
+    /// @dev strict=true: Revert if newInfo.publishTime <= existing.publishTime
+    /// @dev Use strict=true for user operations, strict=false for batch processing
     function _applyUpdate(bytes32 priceId, FastPriceFeedAdapterStorage.PriceInfo memory newInfo, bool strict) internal {
         FastPriceFeedAdapterStorage.Layout storage s = FastPriceFeedAdapterStorage.layout();
-        FastPriceFeedAdapterStorage.PriceInfo memory cur = s.priceInfos[priceId];
+        FastPriceFeedAdapterStorage.PriceInfo memory current = s.priceInfos[priceId];
 
+        bool isNewer = newInfo.publishTime > current.publishTime;
         if (strict) {
-            if (newInfo.publishTime <= cur.publishTime) revert ValidationFailed("New price must be newer");
+            if (!isNewer) revert ValidationFailed("New price must be newer");
         } else {
-            if (newInfo.publishTime <= cur.publishTime) return;
+            if (!isNewer) return;
         }
 
         s.priceInfos[priceId] = newInfo;
-        if (cur.publishTime == 0) {
+        if (current.publishTime == 0) {
             s.assetIds.push(priceId);
         }
         emit PriceFeedUpdate(priceId, newInfo.publishTime, newInfo.price, newInfo.conf);
@@ -281,7 +289,7 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
         }
 
         // Ensure every requested feed had >= 1 match
-        for (uint256 k = 0; k < priceIds.length; k++) {
+        for (uint256 k = 0; k < priceIds.length; ++k) {
             if (priceFeeds[k].id == 0) revert PythErrors.PriceFeedNotFoundWithinRange();
         }
 
@@ -292,6 +300,15 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
     }
 
     /// @notice Processes a single update data blob
+    /// @param updateData The update data to process
+    /// @param priceIds The price IDs to process
+    /// @param minPublishTime The minimum publish time
+    /// @param maxPublishTime The maximum publish time
+    /// @param priceFeeds The price feeds to update
+    /// @param updateStorage Whether to update storage
+    /// @param checkUniqueness Whether to check uniqueness
+    /// @param matchCounts The match counts
+    /// @return The number of updates processed
     function _processUpdateDataBlob(
         bytes calldata updateData,
         bytes32[] calldata priceIds,
@@ -305,7 +322,7 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
         // PriceUpdate[] memory priceUpdates = abi.decode(batch.result.result, (PriceUpdate[]));
         (ProgramConfig memory cfg, PriceUpdate[] memory priceUpdates, ) = _verifyAndDecode(updateData);
 
-        for (uint256 i = 0; i < priceUpdates.length; i++) {
+        for (uint256 i = 0; i < priceUpdates.length; ++i) {
             _processPriceUpdate(
                 priceUpdates[i],
                 cfg,
@@ -324,6 +341,20 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
     }
 
     /// @notice Processes a single price update
+    /// @param priceUpdate The price update to process
+    /// @param programConfig The program configuration
+    /// @param priceIds The price IDs to search in
+    /// @param minPublishTime The minimum publish time
+    /// @param maxPublishTime The maximum publish time
+    /// @param priceFeeds The price feeds to update
+    /// @param updateStorage Whether to update storage
+    /// @param checkUniqueness Whether to check uniqueness
+    /// @param matchCounts The match counts
+    /// @dev Irrelevant for our requested set or out of window — ignored.
+    /// @dev If uniqueness is requested, the *second* match must revert.
+    /// @dev Fill behavior:
+    /// - If uniqueness is ON, we only ever see the first match (2nd would revert), so set once.
+    /// - If uniqueness is OFF, we prefer the latest (overwrite if newer).
     function _processPriceUpdate(
         PriceUpdate memory priceUpdate,
         ProgramConfig memory programConfig,
@@ -339,8 +370,8 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
 
         uint256 targetIndex = _findPriceIdIndex(priceIds, priceId);
         bool requested = (targetIndex < priceIds.length);
-        bool inRange = (priceUpdate.priceInfo.publishTime >= minPublishTime &&
-            priceUpdate.priceInfo.publishTime <= maxPublishTime);
+        bool inRange = (priceUpdate.priceInfo.publishTime + 1 > minPublishTime &&
+            priceUpdate.priceInfo.publishTime < maxPublishTime + 1);
 
         if (!requested || !inRange) {
             // Irrelevant for our requested set or out of window — ignored.
@@ -348,7 +379,7 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
         }
 
         // Count matches for this requested id in the window.
-        matchCounts[targetIndex] += 1;
+        ++matchCounts[targetIndex];
 
         // If uniqueness is requested, the *second* match must revert.
         if (checkUniqueness && matchCounts[targetIndex] > 1) {
@@ -362,8 +393,38 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
             priceFeeds[targetIndex].id == 0 ||
             (!checkUniqueness && priceUpdate.priceInfo.publishTime > priceFeeds[targetIndex].price.publishTime)
         ) {
-            priceFeeds[targetIndex] = PythStructs.PriceFeed({
-                id: priceId,
+            // Convert SEDA priceUpdate to Pyth PriceFeed using computed priceId
+            priceFeeds[targetIndex] = _convertToPriceFeed(priceId, priceUpdate);
+
+            if (updateStorage) {
+                _applyUpdate(priceId, priceUpdate.priceInfo, /*strict=*/ true);
+            }
+        }
+    }
+
+    /// @notice Finds the index of a price ID in the requested array
+    /// @param priceIds The price IDs to search in
+    /// @param targetId The target price ID to find
+    /// @return The index of the target price ID
+    function _findPriceIdIndex(bytes32[] calldata priceIds, bytes32 targetId) internal pure returns (uint256) {
+        for (uint256 i = 0; i < priceIds.length; ++i) {
+            if (priceIds[i] == targetId) return i;
+        }
+        return priceIds.length;
+    }
+
+    /// @notice Converts a PriceUpdate to a PythStructs.PriceFeed
+    /// @param priceId The computed price ID (different from priceUpdate.rawId)
+    /// @param priceUpdate The price update data from SEDA
+    /// @return priceFeed The converted price feed
+    /// @dev Note: priceId is the computed ID, not the raw ID from priceUpdate
+    function _convertToPriceFeed(
+        bytes32 priceId,
+        PriceUpdate memory priceUpdate
+    ) internal pure returns (PythStructs.PriceFeed memory priceFeed) {
+        return
+            PythStructs.PriceFeed({
+                id: priceId, // This is the computed ID, not priceUpdate.rawId
                 price: PythStructs.Price({
                     price: priceUpdate.priceInfo.price,
                     conf: priceUpdate.priceInfo.conf,
@@ -377,68 +438,92 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
                     publishTime: priceUpdate.priceInfo.publishTime
                 })
             });
-
-            if (updateStorage) {
-                _applyUpdate(priceId, priceUpdate.priceInfo, /*strict=*/ true);
-            }
-        }
-    }
-
-    /// @notice Finds the index of a price ID in the requested array
-    function _findPriceIdIndex(bytes32[] calldata priceIds, bytes32 targetId) internal pure returns (uint256) {
-        for (uint256 i = 0; i < priceIds.length; i++) {
-            if (priceIds[i] == targetId) return i;
-        }
-        return priceIds.length;
     }
 
     // ============ IPyth Functions ============
 
+    /// @notice Get price that is no older than `age` seconds
+    /// @param id The price ID to get the price for
+    /// @return price The price
     function getPriceUnsafe(bytes32 id) external view override returns (PythStructs.Price memory price) {
         FastPriceFeedAdapterStorage.PriceInfo memory info = FastPriceFeedAdapterStorage.layout().priceInfos[id];
         if (info.publishTime == 0) revert PythErrors.PriceFeedNotFound();
         return PythStructs.Price(info.price, info.conf, info.expo, info.publishTime);
     }
 
+    /// @notice Get exponentially-weighted moving average price that is no older than `age` seconds
+    /// @param id The price ID to get the price for
+    /// @return price The price
     function getEmaPriceUnsafe(bytes32 id) external view override returns (PythStructs.Price memory price) {
         FastPriceFeedAdapterStorage.PriceInfo memory info = FastPriceFeedAdapterStorage.layout().priceInfos[id];
         if (info.publishTime == 0) revert PythErrors.PriceFeedNotFound();
         return PythStructs.Price(info.emaPrice, info.emaConf, info.expo, info.publishTime);
     }
 
-    function getPriceNoOlderThan(bytes32 id, uint age) external view override returns (PythStructs.Price memory price) {
+    /// @notice Get price that is no older than `age` seconds
+    /// @param id The price ID to get the price for
+    /// @param age The age of the price
+    /// @return price The price
+    function getPriceNoOlderThan(
+        bytes32 id,
+        uint256 age
+    ) external view override returns (PythStructs.Price memory price) {
         FastPriceFeedAdapterStorage.PriceInfo memory info = FastPriceFeedAdapterStorage.layout().priceInfos[id];
         if (info.publishTime == 0) revert PythErrors.PriceFeedNotFound();
+        // solhint-disable-next-line not-rely-on-time
         if (block.timestamp - info.publishTime > age) revert PythErrors.StalePrice();
         return PythStructs.Price(info.price, info.conf, info.expo, info.publishTime);
     }
 
+    /// @notice Get exponentially-weighted moving average price that is no older than `age` seconds
+    /// @param id The price ID to get the price for
+    /// @param age The age of the price
+    /// @return price The price
     function getEmaPriceNoOlderThan(
         bytes32 id,
-        uint age
+        uint256 age
     ) external view override returns (PythStructs.Price memory price) {
         FastPriceFeedAdapterStorage.PriceInfo memory info = FastPriceFeedAdapterStorage.layout().priceInfos[id];
         if (info.publishTime == 0) revert PythErrors.PriceFeedNotFound();
+        // solhint-disable-next-line not-rely-on-time
         if (block.timestamp - info.publishTime > age) revert PythErrors.StalePrice();
         return PythStructs.Price(info.emaPrice, info.emaConf, info.expo, info.publishTime);
     }
 
     // ------------------------------
 
-    function getUpdateFee(bytes[] calldata) external pure override returns (uint) {
+    /// @notice Get update fee
+    /// @param updateData The update data to get the fee for
+    /// @return The update fee
+    function getUpdateFee(
+        // solhint-disable-next-line no-unused-vars
+        bytes[] calldata updateData
+    ) external pure override returns (uint256) {
         return 0;
     }
 
-    function getTwapUpdateFee(bytes[] calldata) external pure override returns (uint) {
-        return 0;
+    /// @notice Get TWAP update fee
+    /// @param updateData The update data to get the fee for
+    /// @return The update fee
+    function getTwapUpdateFee(
+        // solhint-disable-next-line no-unused-vars
+        bytes[] calldata updateData
+    ) external pure override returns (uint256) {
+        revert NotImplemented();
     }
 
+    /// @notice Update price feeds
+    /// @param updateData The update data to update
     function updatePriceFeeds(bytes[] calldata updateData) external payable override {
-        for (uint256 i = 0; i < updateData.length; i++) {
+        for (uint256 i = 0; i < updateData.length; ++i) {
             _processSignedPayload(updateData[i], true); // true = update storage
         }
     }
 
+    /// @notice Update price feeds if necessary
+    /// @param updateData The update data to update
+    /// @param priceIds The price IDs to update
+    /// @param publishTimes The publish times to update
     function updatePriceFeedsIfNecessary(
         bytes[] calldata updateData,
         bytes32[] calldata priceIds,
@@ -447,7 +532,7 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
         if (priceIds.length != publishTimes.length) revert PythErrors.InvalidArgument();
 
         bool needsUpdate = false;
-        for (uint256 i = 0; i < priceIds.length; i++) {
+        for (uint256 i = 0; i < priceIds.length; ++i) {
             FastPriceFeedAdapterStorage.PriceInfo memory current = FastPriceFeedAdapterStorage.layout().priceInfos[
                 priceIds[i]
             ];
@@ -460,11 +545,21 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
         // Pyth parity: revert when nothing to do
         if (!needsUpdate) revert PythErrors.NoFreshUpdate();
 
-        for (uint256 i = 0; i < updateData.length; i++) {
+        for (uint256 i = 0; i < updateData.length; ++i) {
             _processSignedPayload(updateData[i], true);
         }
     }
 
+    /// @notice Parse price feed updates with configuration
+    /// @param updateData The update data to parse
+    /// @param priceIds The price IDs to filter for (EXPECT composed ids)
+    /// @param minAllowedPublishTime The minimum allowed publish time
+    /// @param maxAllowedPublishTime The maximum allowed publish time
+    /// @param checkUniqueness Whether to check uniqueness
+    /// @param checkUpdateDataIsMinimal Whether to check update data is minimal
+    /// @param storeUpdatesIfFresh Whether to store updates if fresh
+    /// @return priceFeeds Array of parsed price feeds
+    /// @return slots Array of slots
     function parsePriceFeedUpdatesWithConfig(
         bytes[] calldata updateData,
         bytes32[] calldata priceIds,
@@ -486,6 +581,12 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
         slots = new uint64[](priceIds.length); // SEDA doesn't use slots
     }
 
+    /// @notice Parse price feed updates
+    /// @param updateData The update data to parse
+    /// @param priceIds The price IDs to filter for (EXPECT composed ids)
+    /// @param minPublishTime The minimum publish time
+    /// @param maxPublishTime The maximum publish time
+    /// @return priceFeeds Array of parsed price feeds
     function parsePriceFeedUpdates(
         bytes[] calldata updateData,
         bytes32[] calldata priceIds,
@@ -495,13 +596,26 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
         return _parsePriceFeedUpdates(updateData, priceIds, minPublishTime, maxPublishTime, false, false, false);
     }
 
+    /// @notice Parse time-weighted average price (TWAP) from two consecutive price updates
+    /// @param updateData The update data to parse
+    /// @param priceIds The price IDs to filter for (EXPECT composed ids)
+    /// @return Array of TWAP price feeds (not implemented)
+    /// @dev TWAP functionality is not implemented in this adapter
     function parseTwapPriceFeedUpdates(
-        bytes[] calldata,
-        bytes32[] calldata
+        // solhint-disable-next-line no-unused-vars
+        bytes[] calldata updateData,
+        // solhint-disable-next-line no-unused-vars
+        bytes32[] calldata priceIds
     ) external payable override returns (PythStructs.TwapPriceFeed[] memory) {
         revert NotImplemented();
     }
 
+    /// @notice Parses price feed updates with uniqueness check
+    /// @param updateData The update data to parse
+    /// @param priceIds The price IDs to filter for (EXPECT composed ids)
+    /// @param minPublishTime The minimum publish time
+    /// @param maxPublishTime The maximum publish time
+    /// @return priceFeeds Array of parsed price feeds
     function parsePriceFeedUpdatesUnique(
         bytes[] calldata updateData,
         bytes32[] calldata priceIds,

@@ -86,11 +86,13 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
 
     /// @notice Authorizes upgrades (only owner can upgrade)
     /// @param newImplementation The address of the new implementation contract
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner
-    // solhint-disable-next-line no-empty-blocks
-    {
-        
-    }
+    function _authorizeUpgrade(
+        address newImplementation
+    )
+        internal
+        override
+        onlyOwner // solhint-disable-next-line no-empty-blocks
+    {}
 
     // ============ Trusted Key Management ============
 

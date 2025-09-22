@@ -95,7 +95,10 @@ describe("FastPriceFeedAdapter", () => {
 
       await expect(
         fastPriceFeedAdapter.updateProver(ethers.ZeroAddress),
-      ).to.be.revertedWithCustomError(fastPriceFeedAdapter, "InvalidParameter");
+      ).to.be.revertedWithCustomError(
+        fastPriceFeedAdapter,
+        "ZeroAddressNotAllowed",
+      );
     });
   });
 
