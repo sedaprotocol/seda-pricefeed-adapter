@@ -336,6 +336,7 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
         (string[] memory symbols, int256[] memory prices) = _decodeAndValidate(updateParams, result);
 
         for (uint256 i = 0; i < targetIndices.length; ++i) {
+            // Note: symbols.length > 0 is guaranteed by _decodeAndValidate() which reverts on empty arrays
             if (targetIndices[i] > symbols.length - 1) {
                 revert ValidationFailed("Index out of bounds");
             }

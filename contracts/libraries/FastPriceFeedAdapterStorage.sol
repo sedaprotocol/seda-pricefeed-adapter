@@ -3,13 +3,13 @@ pragma solidity ^0.8.28;
 
 /// @title FastPriceFeedAdapterStorage
 /// @author Open Oracle Association
-/// @notice Storage library for FastPriceFeedAdapter contract using the ERC-7201 storage pattern.
-/// @dev Storage layout and structs for FastPriceFeedAdapter, including price info mapping and asset IDs.
+/// @notice Storage library for FastPriceFeedAdapter using the ERC-7201 storage pattern.
+/// @dev Storage layout for oracle-specific data in FastPriceFeedAdapter, separate from generic Pyth storage.
 /// @custom:storage-location fastpricefeedadapter.storage.v1
 library FastPriceFeedAdapterStorage {
     // ============ Constants ============
 
-    /// @notice ERC-7201 storage slot for FastPriceFeedAdapter contract (version 1)
+    /// @notice ERC-7201 storage slot for FastPriceFeedAdapterStorage (version 1)
     /// @dev Namespace: "fastpricefeedadapter.storage.v1"
     ///      ERC-7201 calculation: keccak256(abi.encode(uint256(keccak256(namespace)) - 1)) & ~bytes32(uint256(0xff))
     bytes32 internal constant STORAGE_SLOT_V1 =
@@ -17,29 +17,12 @@ library FastPriceFeedAdapterStorage {
 
     // ============ Structs ============
 
-    /// @notice Stores price information for a single asset, including EMA and confidence values
-    /// @dev Used as the value type in the mapping from assetId to PriceInfo in FastPriceFeedAdapter storage.
-    ///      This struct is packed into two storage slots for gas efficiency.
-    struct PriceInfo {
-        // slot 1
-        uint64 publishTime; /// @notice The timestamp (seconds) when the price was published
-        int32 expo; /// @notice The exponent (decimals) for the price value
-        int64 price; /// @notice The latest reported price (scaled by expo)
-        uint64 conf; /// @notice Confidence interval for the price (same scale as price)
-        // slot 2
-        int64 emaPrice; /// @notice Exponential moving average price (scaled by expo)
-        uint64 emaConf; /// @notice Confidence interval for the EMA price (same scale as price)
-    }
-
-    /// @notice Storage layout for FastPriceFeedAdapter contract (v1)
+    /// @notice Storage layout for FastPriceFeedAdapterStorage (v1)
     /// @dev Do not change the order of fields. For new fields, create a new versioned layout.
     struct Layout {
-        /// @notice The SEDA SECP256k1 prover contract used for result verification
+        /// @notice The oracle prover contract used for result verification
+        /// @dev Generic name to support different oracle types (SEDA, Chainlink, etc.)
         address sedaProver;
-        /// @notice Mapping from assetId to stored price information
-        mapping(bytes32 => PriceInfo) priceInfos;
-        /// @notice Array of all registered asset IDs
-        bytes32[] assetIds;
     }
 
     // ============ Functions ============
