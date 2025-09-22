@@ -98,7 +98,7 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
 
     /// @notice Adds a new trusted public key
     /// @param key The public key to add as trusted
-    function addTrustedKey(address key) external onlyOwner whenNotPaused {
+    function addTrustedKey(address key) external onlyOwner {
         if (key == address(0)) revert InvalidKeyAddress();
 
         if (trustedKeys[key]) {
@@ -114,7 +114,7 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
 
     /// @notice Removes a trusted public key
     /// @param key The public key to remove from trusted keys
-    function removeTrustedKey(address key) external onlyOwner whenNotPaused {
+    function removeTrustedKey(address key) external onlyOwner {
         if (!trustedKeys[key]) {
             revert TrustedKeyNotFound(key);
         }
