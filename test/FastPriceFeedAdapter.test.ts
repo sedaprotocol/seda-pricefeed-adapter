@@ -13,14 +13,12 @@ describe("FastPriceFeedAdapter", () => {
     });
 
     // Deploy FastPriceFeedAdapter
-    const FastPriceFeedAdapter =
-      await ethers.getContractFactory("FastPriceFeedAdapter");
+    const FastPriceFeedAdapter = await ethers.getContractFactory(
+      "FastPriceFeedAdapter",
+    );
     const fastPriceFeedAdapter = await upgrades.deployProxy(
       FastPriceFeedAdapter,
-      [
-        await fastProver.getAddress(),
-        owner.address,
-      ],
+      [await fastProver.getAddress(), owner.address],
       {
         initializer: "initialize",
       },
@@ -45,7 +43,6 @@ describe("FastPriceFeedAdapter", () => {
         await fastProver.getAddress(),
       );
     });
-
   });
 
   describe("Prover Management", () => {
@@ -403,8 +400,9 @@ describe("FastPriceFeedAdapter", () => {
       const initialProver = await fastPriceFeedAdapter.getProver();
 
       // Upgrade the contract
-      const FastPriceFeedAdapterV2 =
-        await ethers.getContractFactory("FastPriceFeedAdapter");
+      const FastPriceFeedAdapterV2 = await ethers.getContractFactory(
+        "FastPriceFeedAdapter",
+      );
       const upgradedContract = await upgrades.upgradeProxy(
         fastPriceFeedAdapter,
         FastPriceFeedAdapterV2,

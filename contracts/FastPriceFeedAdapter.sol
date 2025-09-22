@@ -24,8 +24,6 @@ import {FastPriceFeedAdapterStorage} from "./libraries/FastPriceFeedAdapterStora
 ///                  Oracle result validation is enforced.
 /// @custom:upgrades UUPS upgradeable, ERC-7201 storage layout (v1).
 contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSUpgradeable, PausableUpgradeable {
-    // ============ Constants ============
-
     // ============ Structs ============
 
     /// @notice Struct for submitting signed data to the contract
@@ -59,17 +57,9 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
 
     // ============ Custom Errors ============
 
-    /// @notice Thrown when result validation fails during processing
-    /// @param reason Human-readable description of the validation failure
-    error ValidationFailed(string reason);
-
-    /// @notice Thrown when initialization or function parameters are invalid
-    /// @param reason Human-readable description of the parameter error
-    error InvalidParameter(string reason);
-
-    /// @notice Thrown when a zero address is provided where a valid address is required
-    /// @param parameter The name of the parameter that cannot be zero address
-    error ZeroAddressNotAllowed(string parameter);
+    /// @notice Thrown when more than one matching update exists within the requested time window
+    /// @param id The price ID that has multiple updates
+    error MultiplePriceUpdatesWithinRange(bytes32 id);
 
     /// @notice Thrown when a function is not implemented
     error NotImplemented();
@@ -77,17 +67,15 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
     /// @notice Thrown when provided updateData contains entries that are not strictly necessary
     error UpdateDataNotMinimal();
 
-    /// @notice Thrown when more than one matching update exists within the requested time window
-    error MultiplePriceUpdatesWithinRange(bytes32 id);
+    /// @notice Thrown when result validation fails during processing
+    /// @param reason Human-readable description of the validation failure
+    error ValidationFailed(string reason);
+
+    /// @notice Thrown when a zero address is provided where a valid address is required
+    /// @param parameter The name of the parameter that cannot be zero address
+    error ZeroAddressNotAllowed(string parameter);
 
     // ============ Events ============
-
-    // /// @notice Emitted when a price feed is updated
-    // /// @param id The asset ID
-    // /// @param publishTime The timestamp of the price feed update
-    // /// @param price The decoded price value as a signed integer
-    // /// @param conf The confidence interval for the price
-    // event PriceFeedUpdate(bytes32 indexed id, uint64 indexed publishTime, int64 indexed price, uint64 conf);
 
     /// @notice Emitted when the SEDA prover address is updated by the owner
     /// @param oldProver The previous prover contract address
@@ -119,17 +107,10 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
 
     // ============ External Functions ============
 
-    // /// @notice Submits a signed payload containing price update data
-    // /// @param signedPayload The signed payload containing the price update data
-    // /// @dev Only callable when the contract is not paused
-    // function submit(bytes calldata signedPayload) external onlyProxy whenNotPaused {
-    //     _processSignedPayload(signedPayload, true); // true = update storage
-    // }
-
     /// @notice Updates the SEDA prover contract address (owner only)
     /// @param newProver Address of the new SEDA prover contract
     function updateProver(address newProver) external onlyProxy onlyOwner {
-        if (newProver == address(0)) revert InvalidParameter("Invalid SEDA prover address");
+        if (newProver == address(0)) revert ZeroAddressNotAllowed("prover");
         FastPriceFeedAdapterStorage.Layout storage s = FastPriceFeedAdapterStorage.layout();
         address oldProver = s.sedaProver;
         s.sedaProver = newProver;
@@ -175,7 +156,7 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
     /// @dev Only the owner can upgrade the contract
     /// @param newImplementation Address of the new implementation contract
     function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {
-        if (newImplementation == address(0)) revert InvalidParameter("Invalid implementation address");
+        if (newImplementation == address(0)) revert ZeroAddressNotAllowed("implementation");
     }
 
     /// @notice Computes the composed price id from program ids and a raw feed id
@@ -188,32 +169,62 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
     /// @param signedPayload The signed payload to process
     /// @param updateStorage Whether to update storage or just parse
     function _processSignedPayload(bytes calldata signedPayload, bool updateStorage) internal whenNotPaused {
-        PriceUpdateBatch memory batch = _decodeAndVerifyPayload(signedPayload);
-
+        (ProgramConfig memory cfg, PriceUpdate[] memory ups, ) = _verifyAndDecode(signedPayload);
         if (updateStorage) {
-            _updatePriceFeeds(batch);
+            // permissive (skip older/equal)
+            for (uint256 i = 0; i < ups.length; ) {
+                _applyUpdate(_computePriceId(cfg, ups[i].rawId), ups[i].priceInfo, /*strict=*/ false);
+                unchecked {
+                    ++i;
+                }
+            }
         }
     }
 
-    /// @notice Decodes and verifies a signed payload
-    /// @param signedPayload The signed payload to decode and verify
-    /// @return batch The decoded and verified batch
-    function _decodeAndVerifyPayload(
+    /// Verifies a SignedPayload and decodes it into (ProgramConfig, PriceUpdate[], Result)
+    /// @param signedPayload The signed payload to verify and decode
+    /// @return programConfig The program configuration
+    /// @return updates The price updates array
+    /// @return result The SEDA result
+    function _verifyAndDecode(
         bytes calldata signedPayload
-    ) internal view returns (PriceUpdateBatch memory batch) {
-        // Decode signedPayload as a struct of (data, signature)
+    )
+        internal
+        view
+        returns (ProgramConfig memory programConfig, PriceUpdate[] memory updates, SedaDataTypes.Result memory result)
+    {
         SignedPayload memory payload = abi.decode(signedPayload, (SignedPayload));
-
-        // Verify signature
         bytes32 dataHash = keccak256(payload.data);
         (bool valid, ) = FastProver(getProver()).verifyData(dataHash, payload.signature);
         if (!valid) revert ValidationFailed("Invalid signature");
 
-        // Decode the actual price update data
-        batch = abi.decode(payload.data, (PriceUpdateBatch));
-
-        // Check if the returned result is valid (exitCode == 0)
+        // Decode the verified data
+        PriceUpdateBatch memory batch = abi.decode(payload.data, (PriceUpdateBatch));
         if (batch.result.exitCode != 0) revert ValidationFailed("Invalid exit code");
+        programConfig = batch.programConfig;
+        result = batch.result;
+        updates = abi.decode(batch.result.result, (PriceUpdate[]));
+        if (updates.length == 0) revert ValidationFailed("Empty batch");
+    }
+
+    /// Single writer with strict/permissive semantics.
+    /// - strict=false → skip on older/equal (batch ingest)
+    /// - strict=true  → revert on older/equal (parse* store-if-fresh paths)
+    function _applyUpdate(bytes32 priceId, FastPriceFeedAdapterStorage.PriceInfo memory newInfo, bool strict) internal {
+        FastPriceFeedAdapterStorage.Layout storage s = FastPriceFeedAdapterStorage.layout();
+        FastPriceFeedAdapterStorage.PriceInfo memory cur = s.priceInfos[priceId];
+
+        if (strict) {
+            if (newInfo.publishTime <= cur.publishTime) revert ValidationFailed("New price must be newer");
+        } else {
+            if (newInfo.publishTime <= cur.publishTime) return;
+        }
+
+        s.priceInfos[priceId] = newInfo;
+        if (cur.publishTime == 0) {
+            s.assetIds.push(priceId);
+        }
+        emit PriceFeedUpdate(priceId, newInfo.publishTime, newInfo.price, newInfo.conf);
     }
 
     /// @notice Updates price feeds in storage
@@ -222,20 +233,12 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
         PriceUpdate[] memory priceUpdates = abi.decode(batch.result.result, (PriceUpdate[]));
         if (priceUpdates.length == 0) revert ValidationFailed("Empty batch");
 
-        FastPriceFeedAdapterStorage.Layout storage s = FastPriceFeedAdapterStorage.layout();
         for (uint256 i = 0; i < priceUpdates.length; ++i) {
-            bytes32 priceId = _computePriceId(batch.programConfig, priceUpdates[i].rawId);
-            FastPriceFeedAdapterStorage.PriceInfo memory newPriceInfo = priceUpdates[i].priceInfo;
-
-            FastPriceFeedAdapterStorage.PriceInfo memory currentPriceInfo = s.priceInfos[priceId];
-            if (newPriceInfo.publishTime <= currentPriceInfo.publishTime) continue;
-            // revert ValidationFailed("New price must be newer");
-
-            s.priceInfos[priceId] = newPriceInfo;
-            if (currentPriceInfo.publishTime == 0) {
-                s.assetIds.push(priceId);
-            }
-            emit PriceFeedUpdate(priceId, newPriceInfo.publishTime, newPriceInfo.price, newPriceInfo.conf);
+            _applyUpdate(
+                _computePriceId(batch.programConfig, priceUpdates[i].rawId),
+                priceUpdates[i].priceInfo,
+                false /*strict=*/
+            );
         }
     }
 
@@ -259,13 +262,12 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
     ) internal returns (PythStructs.PriceFeed[] memory priceFeeds) {
         priceFeeds = new PythStructs.PriceFeed[](priceIds.length);
 
-        // NEW: per-id match counters (detect >1 match for a single requested id)
+        // Per-id match counters (detect >1 match for a single requested id)
         uint256[] memory matchCounts = new uint256[](priceIds.length);
-
-        // NEW: total count across blobs (for minimality)
+        // Total updates count across blobs (for minimality)
         uint64 totalUpdatesAcrossBlobs = 0;
 
-        for (uint256 i = 0; i < updateData.length; i++) {
+        for (uint256 i = 0; i < updateData.length; ++i) {
             totalUpdatesAcrossBlobs += _processUpdateDataBlob(
                 updateData[i],
                 priceIds,
@@ -297,16 +299,16 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
         uint64 maxPublishTime,
         PythStructs.PriceFeed[] memory priceFeeds,
         bool updateStorage,
-        bool checkUniqueness, // NEW
-        uint256[] memory matchCounts // NEW
+        bool checkUniqueness,
+        uint256[] memory matchCounts
     ) internal returns (uint64) {
-        PriceUpdateBatch memory batch = _decodeAndVerifyPayload(updateData);
-        PriceUpdate[] memory priceUpdates = abi.decode(batch.result.result, (PriceUpdate[]));
+        // PriceUpdate[] memory priceUpdates = abi.decode(batch.result.result, (PriceUpdate[]));
+        (ProgramConfig memory cfg, PriceUpdate[] memory priceUpdates, ) = _verifyAndDecode(updateData);
 
         for (uint256 i = 0; i < priceUpdates.length; i++) {
             _processPriceUpdate(
                 priceUpdates[i],
-                batch.programConfig,
+                cfg,
                 priceIds,
                 minPublishTime,
                 maxPublishTime,
@@ -330,8 +332,8 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
         uint64 maxPublishTime,
         PythStructs.PriceFeed[] memory priceFeeds,
         bool updateStorage,
-        bool checkUniqueness, // NEW
-        uint256[] memory matchCounts // NEW
+        bool checkUniqueness,
+        uint256[] memory matchCounts
     ) internal {
         bytes32 priceId = _computePriceId(programConfig, priceUpdate.rawId);
 
@@ -377,7 +379,7 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
             });
 
             if (updateStorage) {
-                _updateSinglePriceFeed(priceId, priceUpdate.priceInfo);
+                _applyUpdate(priceId, priceUpdate.priceInfo, /*strict=*/ true);
             }
         }
     }
@@ -388,18 +390,6 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
             if (priceIds[i] == targetId) return i;
         }
         return priceIds.length;
-    }
-
-    /// @notice Updates a single price feed in storage
-    function _updateSinglePriceFeed(bytes32 priceId, FastPriceFeedAdapterStorage.PriceInfo memory priceInfo) internal {
-        FastPriceFeedAdapterStorage.Layout storage s = FastPriceFeedAdapterStorage.layout();
-        FastPriceFeedAdapterStorage.PriceInfo memory cur = s.priceInfos[priceId];
-        if (priceInfo.publishTime <= cur.publishTime) return;
-        s.priceInfos[priceId] = priceInfo;
-        if (cur.publishTime == 0) {
-            s.assetIds.push(priceId);
-        }
-        emit PriceFeedUpdate(priceId, priceInfo.publishTime, priceInfo.price, priceInfo.conf);
     }
 
     // ============ IPyth Functions ============
