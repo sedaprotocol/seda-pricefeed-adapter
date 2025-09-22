@@ -1,10 +1,11 @@
-import type { Wallet } from "ethers";
+import type { ContractTransactionResponse, Wallet } from "ethers";
 import { ethers } from "hardhat";
-import type { FastPriceFeedAdapter } from "../typechain-types/contracts/FastPriceFeedAdapter";
 
 // Helper function to submit a price update
 export async function submitPriceUpdate(
-  adapter: FastPriceFeedAdapter,
+  adapter: {
+    updatePriceFeeds: (data: string[]) => Promise<ContractTransactionResponse>;
+  },
   trustedKey: Wallet,
   symbol: string,
   price: bigint,
@@ -199,11 +200,6 @@ export async function createEmptyBatchPayload(
     ["tuple(bytes data, bytes signature)"],
     [{ data, signature: serializedSignature }],
   );
-}
-
-// Helper function to create a trusted key
-export function createTrustedKey(validatorId: string = "validator1"): Wallet {
-  return new ethers.Wallet(ethers.id(validatorId).slice(2, 66));
 }
 
 // Helper function to compute asset ID

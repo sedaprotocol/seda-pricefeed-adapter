@@ -3,17 +3,17 @@ import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import type { Wallet } from "ethers";
 import { ethers, upgrades } from "hardhat";
-import type { FastPriceFeedAdapter } from "../typechain-types/contracts/FastPriceFeedAdapter";
-import type { FastProver } from "../typechain-types/contracts/FastProver";
+import type { FastPriceFeedAdapter } from "../../typechain-types/contracts/FastPriceFeedAdapter";
+import type { FastProver } from "../../typechain-types/contracts/FastProver";
 import {
   computeAssetId,
   createEmptyBatchPayload,
   createInvalidExitCodePayload,
   createPastTimestamp,
-  createTrustedKey,
   createValidUpdateData,
   submitPriceUpdate,
-} from "./FastPriceFeedAdapterHelpers";
+} from "../helpers/priceFeedHelpers";
+import { createTrustedKey } from "../helpers/proverHelpers";
 
 describe("FastPriceFeedAdapter", () => {
   // Fixture function

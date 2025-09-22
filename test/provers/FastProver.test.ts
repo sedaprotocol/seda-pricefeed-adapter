@@ -1,12 +1,13 @@
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
+import { createTrustedKey, createUntrustedKey } from "../helpers/proverHelpers";
 
 describe("FastProver", () => {
   async function deployFastProverFixture() {
-    const trustedKey1 = new ethers.Wallet(ethers.id(`validator1`).slice(2, 66));
-    const trustedKey2 = new ethers.Wallet(ethers.id(`validator2`).slice(2, 66));
-    const untrustedKey = new ethers.Wallet(ethers.id(`untrusted`).slice(2, 66));
+    const trustedKey1 = createTrustedKey("validator1");
+    const trustedKey2 = createTrustedKey("validator2");
+    const untrustedKey = createUntrustedKey();
     const [owner, user] = await ethers.getSigners();
 
     const FastProver = await ethers.getContractFactory("FastProver");

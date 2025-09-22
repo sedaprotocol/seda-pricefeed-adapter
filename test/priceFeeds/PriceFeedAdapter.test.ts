@@ -6,7 +6,7 @@ import {
   invalidExitCode,
   invalidMerkleProof,
   valid,
-} from "./fixtures";
+} from "../fixtures";
 
 describe("PriceFeedAdapter", () => {
   // We define a fixture to reuse the same setup in every test.
