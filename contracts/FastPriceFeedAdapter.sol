@@ -471,7 +471,8 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
         FastPriceFeedAdapterStorage.PriceInfo memory info = FastPriceFeedAdapterStorage.layout().priceInfos[id];
         if (info.publishTime == 0) revert PythErrors.PriceFeedNotFound();
         // solhint-disable-next-line not-rely-on-time
-        if (block.timestamp - info.publishTime > age) revert PythErrors.StalePrice();
+        if (block.timestamp < info.publishTime || block.timestamp - info.publishTime > age)
+            revert PythErrors.StalePrice();
         return PythStructs.Price(info.price, info.conf, info.expo, info.publishTime);
     }
 
@@ -486,29 +487,24 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
         FastPriceFeedAdapterStorage.PriceInfo memory info = FastPriceFeedAdapterStorage.layout().priceInfos[id];
         if (info.publishTime == 0) revert PythErrors.PriceFeedNotFound();
         // solhint-disable-next-line not-rely-on-time
-        if (block.timestamp - info.publishTime > age) revert PythErrors.StalePrice();
+        if (block.timestamp < info.publishTime || block.timestamp - info.publishTime > age)
+            revert PythErrors.StalePrice();
         return PythStructs.Price(info.emaPrice, info.emaConf, info.expo, info.publishTime);
     }
 
     // ------------------------------
 
     /// @notice Get update fee
-    /// @param updateData The update data to get the fee for
-    /// @return The update fee
-    function getUpdateFee(
-        // solhint-disable-next-line no-unused-vars
-        bytes[] calldata updateData
-    ) external pure override returns (uint256) {
+    /// @return The update fee (always 0 for this implementation)
+    // solhint-disable-next-line use-natspec
+    function getUpdateFee(bytes[] calldata) external pure override returns (uint256) {
         return 0;
     }
 
     /// @notice Get TWAP update fee
-    /// @param updateData The update data to get the fee for
-    /// @return The update fee
-    function getTwapUpdateFee(
-        // solhint-disable-next-line no-unused-vars
-        bytes[] calldata updateData
-    ) external pure override returns (uint256) {
+    /// @return The update fee (function reverts - not implemented)
+    // solhint-disable-next-line use-natspec
+    function getTwapUpdateFee(bytes[] calldata) external pure override returns (uint256) {
         revert NotImplemented();
     }
 
@@ -597,15 +593,12 @@ contract FastPriceFeedAdapter is IPyth, Initializable, OwnableUpgradeable, UUPSU
     }
 
     /// @notice Parse time-weighted average price (TWAP) from two consecutive price updates
-    /// @param updateData The update data to parse
-    /// @param priceIds The price IDs to filter for (EXPECT composed ids)
-    /// @return Array of TWAP price feeds (not implemented)
+    /// @return Array of TWAP price feeds (function reverts - not implemented)
     /// @dev TWAP functionality is not implemented in this adapter
+    // solhint-disable-next-line use-natspec
     function parseTwapPriceFeedUpdates(
-        // solhint-disable-next-line no-unused-vars
-        bytes[] calldata updateData,
-        // solhint-disable-next-line no-unused-vars
-        bytes32[] calldata priceIds
+        bytes[] calldata,
+        bytes32[] calldata
     ) external payable override returns (PythStructs.TwapPriceFeed[] memory) {
         revert NotImplemented();
     }
