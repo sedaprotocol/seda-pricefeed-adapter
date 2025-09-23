@@ -1,5 +1,5 @@
 import { getAdapterContract } from "./common/contract";
-import { sedaScope } from "./index";
+import { sedaScope } from "./scope";
 
 sedaScope
   .task("adapter:status", "Get PriceFeedAdapter status and configuration")
@@ -22,7 +22,7 @@ sedaScope
           adapter.paused(),
         ]);
 
-      console.log("\n🔍 PriceFeedAdapter Status:");
+      console.log("\n🔍 CoreAdapter Status:");
       console.log("  - SEDA Prover:", prover);
       console.log("  - Implementation:", implementation);
       console.log("  - Owner:", owner);

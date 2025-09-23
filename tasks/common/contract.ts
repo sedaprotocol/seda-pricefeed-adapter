@@ -26,10 +26,7 @@ export async function getAdapterContract(hre: HardhatRuntimeEnvironment) {
   }
 
   const adapterAddress = deployment.contracts.priceFeedAdapterProxy;
-  const adapter = await hre.ethers.getContractAt(
-    "PriceFeedAdapter",
-    adapterAddress,
-  );
+  const adapter = await hre.ethers.getContractAt("CoreAdapter", adapterAddress);
 
   return { adapter, addresses, deployment };
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {AggregatorV2V3Interface} from "./interfaces/AggregatorV2V3Interface.sol";
+import {AggregatorV2V3Interface} from "./interfaces/aggregator/AggregatorV2V3Interface.sol";
 
 /// @title PriceFeed
 /// @author Open Oracle Association

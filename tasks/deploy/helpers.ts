@@ -108,8 +108,8 @@ export function printDeploymentSummary(
   console.log("\n Contract Addresses:");
   console.log(`   Prover:                    ${proverAddress}`);
   console.log(`   PriceFeed Implementation:  ${implAddress}`);
-  console.log(`   PriceFeedAdapter Proxy:    ${adapterAddress}`);
-  console.log(`   PriceFeedAdapter Impl:     ${adapterImplAddress}`);
+  console.log(`   CoreAdapter Proxy:    ${adapterAddress}`);
+  console.log(`   CoreAdapter Impl:     ${adapterImplAddress}`);
 
   console.log("\n Deployment Details:");
   console.log(

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {IPyth} from "./interfaces/pyth/IPyth.sol";
-import {PythStructs} from "./interfaces/pyth/PythStructs.sol";
-import {PythErrors} from "./interfaces/pyth/PythErrors.sol";
-import {PythAdapterStorage} from "./libraries/PythAdapterStorage.sol";
+import {IPyth} from "../interfaces/pyth/IPyth.sol";
+import {PythStructs} from "../interfaces/pyth/PythStructs.sol";
+import {PythErrors} from "../interfaces/pyth/PythErrors.sol";
+import {PythAdapterStorage} from "../storage/PythAdapterStorage.sol";
 
 /// @title BasePythAdapter
 /// @author Open Oracle Association

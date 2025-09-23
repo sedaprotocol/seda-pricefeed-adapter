@@ -8,11 +8,11 @@ import {
   valid,
 } from "../fixtures";
 
-describe("PriceFeedAdapter", () => {
+describe("CoreAdapter", () => {
   // We define a fixture to reuse the same setup in every test.
   // We use loadFixture to run this setup once, snapshot that state,
   // and reset Hardhat Network to that snapshot in every test.
-  async function deployPriceFeedAdapterFixture() {
+  async function deployCoreAdapterFixture() {
     const [owner, user] = await ethers.getSigners();
 
     // Deploy the MockSedaProver contract
@@ -28,11 +28,10 @@ describe("PriceFeedAdapter", () => {
     // Get the valid data for contract deployment
     const data = valid();
 
-    // Deploy the PriceFeedAdapter contract using proxy pattern
-    const PriceFeedAdapter =
-      await ethers.getContractFactory("PriceFeedAdapter");
+    // Deploy the CoreAdapter contract using proxy pattern
+    const CoreAdapter = await ethers.getContractFactory("CoreAdapter");
     const priceFeedAdapter = await upgrades.deployProxy(
-      PriceFeedAdapter,
+      CoreAdapter,
       [
         await mockProver.getAddress(),
         await sedaPriceFeed.getAddress(),
@@ -58,12 +57,11 @@ describe("PriceFeedAdapter", () => {
       const [owner] = await ethers.getSigners();
       const PriceFeed = await ethers.getContractFactory("PriceFeed");
       const sedaPriceFeed = await PriceFeed.deploy();
-      const PriceFeedAdapter =
-        await ethers.getContractFactory("PriceFeedAdapter");
+      const CoreAdapter = await ethers.getContractFactory("CoreAdapter");
 
       await expect(
         upgrades.deployProxy(
-          PriceFeedAdapter,
+          CoreAdapter,
           [
             ethers.ZeroAddress,
             await sedaPriceFeed.getAddress(),
@@ -83,10 +81,7 @@ describe("PriceFeedAdapter", () => {
           },
         ),
       )
-        .to.be.revertedWithCustomError(
-          PriceFeedAdapter,
-          "ZeroAddressNotAllowed",
-        )
+        .to.be.revertedWithCustomError(CoreAdapter, "ZeroAddressNotAllowed")
         .withArgs("SEDA prover");
     });
 
@@ -94,12 +89,11 @@ describe("PriceFeedAdapter", () => {
       const [owner] = await ethers.getSigners();
       const MockSedaProver = await ethers.getContractFactory("MockSedaProver");
       const mockProver = await MockSedaProver.deploy();
-      const PriceFeedAdapter =
-        await ethers.getContractFactory("PriceFeedAdapter");
+      const CoreAdapter = await ethers.getContractFactory("CoreAdapter");
 
       await expect(
         upgrades.deployProxy(
-          PriceFeedAdapter,
+          CoreAdapter,
           [
             await mockProver.getAddress(),
             ethers.ZeroAddress,
@@ -119,10 +113,7 @@ describe("PriceFeedAdapter", () => {
           },
         ),
       )
-        .to.be.revertedWithCustomError(
-          PriceFeedAdapter,
-          "ZeroAddressNotAllowed",
-        )
+        .to.be.revertedWithCustomError(CoreAdapter, "ZeroAddressNotAllowed")
         .withArgs("implementation");
     });
 
@@ -131,12 +122,11 @@ describe("PriceFeedAdapter", () => {
       const mockProver = await MockSedaProver.deploy();
       const PriceFeed = await ethers.getContractFactory("PriceFeed");
       const sedaPriceFeed = await PriceFeed.deploy();
-      const PriceFeedAdapter =
-        await ethers.getContractFactory("PriceFeedAdapter");
+      const CoreAdapter = await ethers.getContractFactory("CoreAdapter");
 
       await expect(
         upgrades.deployProxy(
-          PriceFeedAdapter,
+          CoreAdapter,
           [
             await mockProver.getAddress(),
             await sedaPriceFeed.getAddress(),
@@ -148,10 +138,7 @@ describe("PriceFeedAdapter", () => {
           },
         ),
       )
-        .to.be.revertedWithCustomError(
-          PriceFeedAdapter,
-          "ZeroAddressNotAllowed",
-        )
+        .to.be.revertedWithCustomError(CoreAdapter, "ZeroAddressNotAllowed")
         .withArgs("owner");
     });
   });
@@ -159,7 +146,7 @@ describe("PriceFeedAdapter", () => {
   describe("Submit", () => {
     it("Should process real results with valid data", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       // Get the valid data for contract deployment
@@ -208,7 +195,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should create price feeds on first submission and reuse on second submission", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       // Get two different data sets
@@ -272,7 +259,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should revert with invalid merkle proof", async () => {
       const { priceFeedAdapter, mockProver } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
       const testData = invalidMerkleProof();
       await mockProver.setBatchValid(testData.batchNumber, false);
@@ -291,7 +278,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should revert with invalid consensus", async () => {
       const { priceFeedAdapter, mockProver } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
       const testData = invalidConsensus();
       await mockProver.setBatchValid(testData.batchNumber, true);
@@ -310,7 +297,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should revert with invalid exit code", async () => {
       const { priceFeedAdapter, mockProver } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
       const testData = invalidExitCode();
       await mockProver.setBatchValid(testData.batchNumber, true);
@@ -329,7 +316,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should revert with invalid DR ID", async () => {
       const { priceFeedAdapter, mockProver } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
       const testData = valid();
       await mockProver.setBatchValid(testData.batchNumber, true);
@@ -351,7 +338,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should revert if invariant of equal length of symbols and prices is violated", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       // Get the valid data for contract deployment
@@ -382,7 +369,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should revert with empty tickers", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       const data = valid();
@@ -452,9 +439,7 @@ describe("PriceFeedAdapter", () => {
 
   describe("Registry", () => {
     it("Should return zero address for non-existent ticker", async () => {
-      const { priceFeedAdapter } = await loadFixture(
-        deployPriceFeedAdapterFixture,
-      );
+      const { priceFeedAdapter } = await loadFixture(deployCoreAdapterFixture);
       expect(
         await priceFeedAdapter.getPriceFeedAddress("NONEXISTENT"),
       ).to.equal(ethers.ZeroAddress);
@@ -462,9 +447,7 @@ describe("PriceFeedAdapter", () => {
     });
 
     it("Should return empty array when no tickers exist", async () => {
-      const { priceFeedAdapter } = await loadFixture(
-        deployPriceFeedAdapterFixture,
-      );
+      const { priceFeedAdapter } = await loadFixture(deployCoreAdapterFixture);
       expect(await priceFeedAdapter.getAllTickers()).to.deep.equal([]);
     });
   });
@@ -472,7 +455,7 @@ describe("PriceFeedAdapter", () => {
   describe("Owner Functions", () => {
     it("Should allow owner to update prover", async () => {
       const { priceFeedAdapter, user } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
       const oldProver = await priceFeedAdapter.getProver();
 
@@ -483,7 +466,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should revert when non-owner tries to update prover", async () => {
       const { priceFeedAdapter, user } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
       await expect(priceFeedAdapter.connect(user).updateProver(user.address))
         .to.be.revertedWithCustomError(
@@ -494,9 +477,7 @@ describe("PriceFeedAdapter", () => {
     });
 
     it("Should revert when updating prover to zero address", async () => {
-      const { priceFeedAdapter } = await loadFixture(
-        deployPriceFeedAdapterFixture,
-      );
+      const { priceFeedAdapter } = await loadFixture(deployCoreAdapterFixture);
 
       await expect(priceFeedAdapter.updateProver(ethers.ZeroAddress))
         .to.be.revertedWithCustomError(priceFeedAdapter, "InvalidParameter")
@@ -524,10 +505,9 @@ describe("PriceFeedAdapter", () => {
       const mockProver = await MockProver.deploy();
       await mockProver.waitForDeployment();
 
-      const PriceFeedAdapter =
-        await ethers.getContractFactory("PriceFeedAdapter");
+      const CoreAdapter = await ethers.getContractFactory("CoreAdapter");
       const priceFeedAdapter = await upgrades.deployProxy(
-        PriceFeedAdapter,
+        CoreAdapter,
         [
           await mockProver.getAddress(),
           await sedaPriceFeed.getAddress(),
@@ -566,7 +546,7 @@ describe("PriceFeedAdapter", () => {
   describe("Getters", () => {
     it("Should return correct prover address", async () => {
       const { priceFeedAdapter, mockProver } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       const proverAddress = await priceFeedAdapter.getProver();
@@ -575,7 +555,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should return correct implementation address", async () => {
       const { priceFeedAdapter, sedaPriceFeed } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       const implementationAddress = await priceFeedAdapter.getImplementation();
@@ -586,7 +566,7 @@ describe("PriceFeedAdapter", () => {
   describe("SubmitForIndices", () => {
     it("Should process only specified indices with submitForIndices", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       const data = valid();
@@ -643,7 +623,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should process multiple specific indices", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       const data = valid();
@@ -694,7 +674,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should revert with index out of bounds", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       const data = valid();
@@ -717,7 +697,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should use same verification logic as submit", async () => {
       const { priceFeedAdapter, mockProver } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       const data = valid();
@@ -739,7 +719,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should handle empty indices array", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       const data = valid();
@@ -777,7 +757,7 @@ describe("PriceFeedAdapter", () => {
   describe("Pause Functions", () => {
     it("Should allow owner to pause the contract", async () => {
       const { priceFeedAdapter, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       await expect(priceFeedAdapter.pause())
@@ -787,7 +767,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should allow owner to unpause the contract", async () => {
       const { priceFeedAdapter, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       // First pause
@@ -801,7 +781,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should revert when non-owner tries to pause", async () => {
       const { priceFeedAdapter, user } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       await expect(priceFeedAdapter.connect(user).pause())
@@ -814,7 +794,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should revert when non-owner tries to unpause", async () => {
       const { priceFeedAdapter, user } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       // First pause as owner
@@ -831,7 +811,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should revert submit when contract is paused", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       const data = valid();
@@ -854,7 +834,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should revert submitForIndices when contract is paused", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       const data = valid();
@@ -880,7 +860,7 @@ describe("PriceFeedAdapter", () => {
   describe("Storage Access Functions", () => {
     it("Should return correct storage values", async () => {
       const { priceFeedAdapter, mockProver, sedaPriceFeed } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       const data = valid();
@@ -913,7 +893,7 @@ describe("PriceFeedAdapter", () => {
   describe("getLatestRoundData", () => {
     it("Should return correct round data for existing ticker", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       const data = valid();
@@ -939,9 +919,7 @@ describe("PriceFeedAdapter", () => {
     });
 
     it("Should revert for non-existent ticker", async () => {
-      const { priceFeedAdapter } = await loadFixture(
-        deployPriceFeedAdapterFixture,
-      );
+      const { priceFeedAdapter } = await loadFixture(deployCoreAdapterFixture);
 
       await expect(priceFeedAdapter.getLatestRoundData("NONEXISTENT-TICKER"))
         .to.be.revertedWithCustomError(priceFeedAdapter, "InvalidParameter")
@@ -952,18 +930,18 @@ describe("PriceFeedAdapter", () => {
   describe("Proxy Upgrade", () => {
     it("Should upgrade the contract", async () => {
       const { priceFeedAdapter, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       // Deploy a new implementation using the factory
-      const PriceFeedAdapterV2 = (
-        await ethers.getContractFactory("PriceFeedAdapter")
+      const CoreAdapterV2 = (
+        await ethers.getContractFactory("CoreAdapter")
       ).connect(owner);
 
       // Upgrade the proxy using Hardhat upgrades
       const upgradedContract = await upgrades.upgradeProxy(
         priceFeedAdapter,
-        PriceFeedAdapterV2,
+        CoreAdapterV2,
       );
 
       // Verify the upgrade was successful by checking if we can call functions
@@ -974,7 +952,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should allow price feeds to be updated after proxy upgrade", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       // Get initial data and create some price feeds
@@ -1015,12 +993,12 @@ describe("PriceFeedAdapter", () => {
         );
 
       // Upgrade the proxy
-      const PriceFeedAdapterV2 = (
-        await ethers.getContractFactory("PriceFeedAdapterV2")
+      const CoreAdapterV2 = (
+        await ethers.getContractFactory("CoreAdapterV2")
       ).connect(owner);
       const upgradedContract = await upgrades.upgradeProxy(
         priceFeedAdapter,
-        PriceFeedAdapterV2,
+        CoreAdapterV2,
       );
 
       // Verify that the proxy address stays the same
@@ -1094,16 +1072,16 @@ describe("PriceFeedAdapter", () => {
 
     it("Should revert when non-owner tries to upgrade", async () => {
       const { priceFeedAdapter, user } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       // Deploy a new implementation using the factory with user account
-      const PriceFeedAdapterV2 = (
-        await ethers.getContractFactory("PriceFeedAdapter")
+      const CoreAdapterV2 = (
+        await ethers.getContractFactory("CoreAdapter")
       ).connect(user);
 
       // Try to upgrade as non-owner using the user account
-      await expect(upgrades.upgradeProxy(priceFeedAdapter, PriceFeedAdapterV2))
+      await expect(upgrades.upgradeProxy(priceFeedAdapter, CoreAdapterV2))
         .to.be.revertedWithCustomError(
           priceFeedAdapter,
           "OwnableUnauthorizedAccount",
@@ -1112,9 +1090,7 @@ describe("PriceFeedAdapter", () => {
     });
 
     it("Should revert when upgrading to zero address", async () => {
-      const { priceFeedAdapter } = await loadFixture(
-        deployPriceFeedAdapterFixture,
-      );
+      const { priceFeedAdapter } = await loadFixture(deployCoreAdapterFixture);
 
       // Try to upgrade to zero address directly
       await expect(priceFeedAdapter.upgradeToAndCall(ethers.ZeroAddress, "0x"))
@@ -1123,7 +1099,7 @@ describe("PriceFeedAdapter", () => {
     });
     it("Should revert when trying to reinitialize", async () => {
       const { priceFeedAdapter, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       // Try to call initialize again on an already initialized contract
@@ -1144,7 +1120,7 @@ describe("PriceFeedAdapter", () => {
   describe("onlyProxy Modifier", () => {
     it("Should revert when submit is called directly on implementation", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       const data = valid();
@@ -1159,7 +1135,7 @@ describe("PriceFeedAdapter", () => {
 
       // Get the implementation contract instance
       const implementation = await ethers.getContractAt(
-        "PriceFeedAdapter",
+        "CoreAdapter",
         implementationAddress,
       );
 
@@ -1176,7 +1152,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should revert when submitForIndices is called directly on implementation", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       const data = valid();
@@ -1191,7 +1167,7 @@ describe("PriceFeedAdapter", () => {
 
       // Get the implementation contract instance
       const implementation = await ethers.getContractAt(
-        "PriceFeedAdapter",
+        "CoreAdapter",
         implementationAddress,
       );
 
@@ -1209,7 +1185,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should revert when updateProver is called directly on implementation", async () => {
       const { priceFeedAdapter, user } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       // Get the implementation contract address
@@ -1220,7 +1196,7 @@ describe("PriceFeedAdapter", () => {
 
       // Get the implementation contract instance
       const implementation = await ethers.getContractAt(
-        "PriceFeedAdapter",
+        "CoreAdapter",
         implementationAddress,
       );
 
@@ -1229,9 +1205,7 @@ describe("PriceFeedAdapter", () => {
     });
 
     it("Should revert when pause is called directly on implementation", async () => {
-      const { priceFeedAdapter } = await loadFixture(
-        deployPriceFeedAdapterFixture,
-      );
+      const { priceFeedAdapter } = await loadFixture(deployCoreAdapterFixture);
 
       // Get the implementation contract address
       const implementationAddress =
@@ -1241,7 +1215,7 @@ describe("PriceFeedAdapter", () => {
 
       // Get the implementation contract instance
       const implementation = await ethers.getContractAt(
-        "PriceFeedAdapter",
+        "CoreAdapter",
         implementationAddress,
       );
 
@@ -1250,9 +1224,7 @@ describe("PriceFeedAdapter", () => {
     });
 
     it("Should revert when unpause is called directly on implementation", async () => {
-      const { priceFeedAdapter } = await loadFixture(
-        deployPriceFeedAdapterFixture,
-      );
+      const { priceFeedAdapter } = await loadFixture(deployCoreAdapterFixture);
 
       // Get the implementation contract address
       const implementationAddress =
@@ -1262,7 +1234,7 @@ describe("PriceFeedAdapter", () => {
 
       // Get the implementation contract instance
       const implementation = await ethers.getContractAt(
-        "PriceFeedAdapter",
+        "CoreAdapter",
         implementationAddress,
       );
 
@@ -1271,9 +1243,7 @@ describe("PriceFeedAdapter", () => {
     });
 
     it("Should allow view functions to be called directly on implementation", async () => {
-      const { priceFeedAdapter } = await loadFixture(
-        deployPriceFeedAdapterFixture,
-      );
+      const { priceFeedAdapter } = await loadFixture(deployCoreAdapterFixture);
 
       // Get the implementation contract address
       const implementationAddress =
@@ -1283,7 +1253,7 @@ describe("PriceFeedAdapter", () => {
 
       // Get the implementation contract instance
       const implementation = await ethers.getContractAt(
-        "PriceFeedAdapter",
+        "CoreAdapter",
         implementationAddress,
       );
 
@@ -1304,7 +1274,7 @@ describe("PriceFeedAdapter", () => {
 
     it("Should work correctly when called through proxy", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
-        deployPriceFeedAdapterFixture,
+        deployCoreAdapterFixture,
       );
 
       const data = valid();

@@ -1,5 +1,5 @@
 import { getAdapterContract } from "./common/contract";
-import { sedaScope } from "./index";
+import { sedaScope } from "./scope";
 
 sedaScope
   .task("adapter:tickers", "Get all registered ticker symbols")

@@ -6,12 +6,12 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-/// @title BasePriceFeedAdapter
+/// @title BaseAdapter
 /// @author Open Oracle Association
 /// @notice Base contract for price feed adapters with common admin functionality
 /// @dev Provides common upgradeable contract functionality without oracle-specific logic
 /// @custom:upgrades UUPS upgradeable
-abstract contract BasePriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable, PausableUpgradeable {
+abstract contract BaseAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable, PausableUpgradeable {
     // ============ Custom Errors ============
 
     /// @notice Thrown when a zero address is provided where a valid address is required
@@ -28,7 +28,7 @@ abstract contract BasePriceFeedAdapter is Initializable, OwnableUpgradeable, UUP
 
     /// @notice Initializes the base contract with owner
     /// @param owner Address that will have administrative privileges
-    function __BasePriceFeedAdapter_init(address owner) internal onlyInitializing {
+    function __BaseAdapter_init(address owner) internal onlyInitializing {
         // solhint-disable-previous-line func-name-mixedcase
         if (owner == address(0)) revert ZeroAddressNotAllowed("owner");
         __Ownable_init(owner);

@@ -2,7 +2,7 @@ import type { HardhatRuntimeEnvironment } from "hardhat/types";
 import type { MockSedaProver } from "../typechain-types/contracts/mocks/MockSedaProver";
 import { getAdapterContract } from "./common/contract";
 import type { SedaConfig } from "./common/schemas";
-import { sedaScope } from "./index";
+import { sedaScope } from "./scope";
 
 sedaScope
   .task(

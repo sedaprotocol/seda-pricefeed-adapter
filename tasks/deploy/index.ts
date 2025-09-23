@@ -5,7 +5,7 @@ import {
   saveBuildInfo,
 } from "../common/io";
 import type { NetworkDeployment, SedaConfig } from "../common/schemas";
-import { sedaScope } from "../index";
+import { sedaScope } from "../scope";
 import {
   checkExistingDeployment,
   confirmAction,
@@ -29,7 +29,7 @@ export const defaultConfig: SedaConfig = {
 };
 
 sedaScope
-  .task("deploy", "Deploy PriceFeedAdapter with proxy")
+  .task("deploy", "Deploy CoreAdapter with proxy")
   .addOptionalParam(
     "prover",
     "Existing prover address (deploys mock if not provided)",
@@ -111,24 +111,22 @@ sedaScope
       console.log(`✓ PriceFeed Implementation deployed: ${implAddress}`);
     }
 
-    // Deploy PriceFeedAdapter proxy
+    // Deploy CoreAdapter proxy
     const adapter = await hre.upgrades.deployProxy(
-      await hre.ethers.getContractFactory("PriceFeedAdapter"),
+      await hre.ethers.getContractFactory("CoreAdapter"),
       [proverAddress, implAddress, deployer.address, config],
       { initializer: "initialize" },
     );
 
     const adapterAddress = await adapter.getAddress();
-    console.log(`✓ PriceFeedAdapter Proxy deployed: ${adapterAddress}`);
+    console.log(`✓ CoreAdapter Proxy deployed: ${adapterAddress}`);
 
     // Wait some time to ensure the proxy is deployed
     await sleep(SLEEP_TIME_MILLIS);
 
     const adapterImplAddress =
       await hre.upgrades.erc1967.getImplementationAddress(adapterAddress);
-    console.log(
-      `✓ PriceFeedAdapter Implementation deployed: ${adapterImplAddress}`,
-    );
+    console.log(`✓ CoreAdapter Implementation deployed: ${adapterImplAddress}`);
 
     const gitInfo = getGitInfo();
 
@@ -148,7 +146,7 @@ sedaScope
 
       const contracts = [
         { name: "PriceFeed", address: implAddress },
-        { name: "PriceFeedAdapter", address: adapterAddress },
+        { name: "CoreAdapter", address: adapterAddress },
       ];
 
       if (!taskArgs.prover) {

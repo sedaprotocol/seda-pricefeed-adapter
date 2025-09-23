@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {PriceFeedAdapter} from "../PriceFeedAdapter.sol";
+import {CoreAdapter} from "../CoreAdapter.sol";
 
-contract PriceFeedAdapterV2 is PriceFeedAdapter {
+contract CoreAdapterV2 is CoreAdapter {
     // No constructor needed for upgradeable contracts
     // The initialize function handles initialization
 

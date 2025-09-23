@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-/// @title PriceFeedAdapterStorage
+/// @title CoreAdapterStorage
 /// @author Open Oracle Association
-/// @notice Storage library for PriceFeedAdapter contract following ERC-7201 standard
+/// @notice Storage library for CoreAdapter contract following ERC-7201 standard
 /// @dev This library contains the storage layout, configuration structs, and accessor
-///      functions for the PriceFeedAdapter contract. It uses ERC-7201 storage pattern
+///      functions for the CoreAdapter contract. It uses ERC-7201 storage pattern
 ///      to prevent storage collisions during upgrades and provides a clean interface
 ///      for accessing contract state variables.
-/// @custom:storage-location pricefeedadapter.storage.v1
-library PriceFeedAdapterStorage {
+/// @custom:storage-location coreadapter.storage.v1
+library CoreAdapterStorage {
     // ============ Constants ============
 
-    /// @notice ERC-7201 storage slot for PriceFeedAdapter contract (version 1)
-    /// @dev Namespace: "pricefeedadapter.storage.v1"
+    /// @notice ERC-7201 storage slot for CoreAdapter contract (version 1)
+    /// @dev Namespace: "coreadapter.storage.v1"
     bytes32 internal constant STORAGE_SLOT_V1 =
-        keccak256(abi.encode(uint256(keccak256("pricefeedadapter.storage.v1")) - 1)) & ~bytes32(uint256(0xff));
+        keccak256(abi.encode(uint256(keccak256("coreadapter.storage.v1")) - 1)) & ~bytes32(uint256(0xff));
 
     // ============ Structs ============
 
@@ -34,7 +34,7 @@ library PriceFeedAdapterStorage {
         bytes consensusFilter;
     }
 
-    /// @notice Complete storage layout for PriceFeedAdapter contract (v1)
+    /// @notice Complete storage layout for CoreAdapter contract (v1)
     /// @dev Keep this layout stable. For new fields, create a new versioned slot and layout.
     struct Layout {
         /// @notice The SEDA SECP256k1 prover contract used for result verification

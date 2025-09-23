@@ -2,18 +2,15 @@
 pragma solidity ^0.8.28;
 
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {BaseAdapter} from "./base/BaseAdapter.sol";
 
 import {IProver} from "@seda-protocol/evm/contracts/interfaces/IProver.sol";
 import {SedaDataTypes} from "@seda-protocol/evm/contracts/libraries/SedaDataTypes.sol";
 
 import {PriceFeed} from "./PriceFeed.sol";
-import {PriceFeedAdapterStorage} from "./libraries/PriceFeedAdapterStorage.sol";
+import {CoreAdapterStorage} from "./storage/CoreAdapterStorage.sol";
 
-/// @title PriceFeedAdapter
+/// @title CoreAdapter
 /// @author Open Oracle Association
 /// @notice A SEDA Price Feed Adapter contract for managing SEDA oracle price feeds with factory,
 ///         registry, and verification capabilities
@@ -33,7 +30,7 @@ import {PriceFeedAdapterStorage} from "./libraries/PriceFeedAdapterStorage.sol";
 ///                   are protected by SEDA's consensus mechanism and Merkle proof verification.
 /// @custom:upgrades This contract uses UUPS upgrade pattern and ERC-7201 storage layout.
 ///                   Storage layout is versioned (v1) to prevent collisions during upgrades.
-contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable, PausableUpgradeable {
+contract CoreAdapter is BaseAdapter {
     // ============ Constants ============
 
     /// @notice Default number of decimal places for price data precision
@@ -64,10 +61,6 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
     /// @notice Thrown when initialization or function parameters are invalid
     /// @param reason Human-readable description of the parameter error
     error InvalidParameter(string reason);
-
-    /// @notice Thrown when a zero address is provided where a valid address is required
-    /// @param parameter The name of the parameter that cannot be zero address
-    error ZeroAddressNotAllowed(string parameter);
 
     // ============ Events ============
 
@@ -106,12 +99,6 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
 
     // ============ Initialization ============
 
-    /// @custom:oz-upgrades-unsafe-allow constructor
-    /// @notice Disables initializers to prevent future reinitialization
-    constructor() {
-        _disableInitializers();
-    }
-
     /// @notice Initializes the PriceFeedAdapter with required contracts and configuration
     /// @param sedaProverAddress Address of the SEDA SECP256k1 prover contract for result verification
     /// @param priceFeedImplementation Address of the PriceFeed implementation contract for proxy creation
@@ -121,17 +108,15 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
         address sedaProverAddress,
         address priceFeedImplementation,
         address owner,
-        PriceFeedAdapterStorage.PriceFeedConfig memory _priceFeedConfig
+        CoreAdapterStorage.PriceFeedConfig memory _priceFeedConfig
     ) public initializer {
         if (sedaProverAddress == address(0)) revert ZeroAddressNotAllowed("SEDA prover");
         if (priceFeedImplementation == address(0)) revert ZeroAddressNotAllowed("implementation");
         if (owner == address(0)) revert ZeroAddressNotAllowed("owner");
 
-        __Ownable_init(owner);
-        __UUPSUpgradeable_init();
-        __Pausable_init();
+        __BaseAdapter_init(owner);
 
-        PriceFeedAdapterStorage.Layout storage s = PriceFeedAdapterStorage.layout();
+        CoreAdapterStorage.Layout storage s = CoreAdapterStorage.layout();
         s.sedaProver = sedaProverAddress;
         s.priceFeedImplementation = priceFeedImplementation;
         s.priceFeedConfig = _priceFeedConfig;
@@ -232,22 +217,10 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
     /// @param newProver Address of the new SEDA prover contract
     function updateProver(address newProver) external onlyProxy onlyOwner {
         if (newProver == address(0)) revert InvalidParameter("Invalid SEDA prover address");
-        PriceFeedAdapterStorage.Layout storage s = PriceFeedAdapterStorage.layout();
+        CoreAdapterStorage.Layout storage s = CoreAdapterStorage.layout();
         address oldProver = address(s.sedaProver);
         s.sedaProver = newProver;
         emit ProverUpdated(oldProver, newProver);
-    }
-
-    /// @notice Pauses the contract, preventing new price feed submissions (owner only)
-    /// @dev This is an emergency function to stop all price feed updates
-    function pause() external onlyProxy onlyOwner {
-        _pause();
-    }
-
-    /// @notice Unpauses the contract, allowing price feed submissions to resume (owner only)
-    /// @dev This function can only be called by the owner
-    function unpause() external onlyProxy onlyOwner {
-        _unpause();
     }
 
     // ============ Public Functions ============
@@ -255,32 +228,32 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
     /// @notice Returns the SEDA prover contract address
     /// @return The address of the SEDA prover contract
     function sedaProver() public view returns (address) {
-        return PriceFeedAdapterStorage.layout().sedaProver;
+        return CoreAdapterStorage.layout().sedaProver;
     }
 
     /// @notice Returns the PriceFeed implementation contract address
     /// @return The address of the PriceFeed implementation contract
     function implementation() public view returns (address) {
-        return PriceFeedAdapterStorage.layout().priceFeedImplementation;
+        return CoreAdapterStorage.layout().priceFeedImplementation;
     }
 
     /// @notice Returns the price feed address for a given ticker
     /// @param ticker The trading symbol to look up
     /// @return The address of the deployed PriceFeed contract, or zero address if not found
     function priceFeedAddresses(string memory ticker) public view returns (address) {
-        return PriceFeedAdapterStorage.layout().priceFeedAddresses[ticker];
+        return CoreAdapterStorage.layout().priceFeedAddresses[ticker];
     }
 
     /// @notice Returns the array of all registered tickers
     /// @return Array of all ticker symbols that have been created
     function tickers() public view returns (string[] memory) {
-        return PriceFeedAdapterStorage.layout().tickers;
+        return CoreAdapterStorage.layout().tickers;
     }
 
     /// @notice Returns the price feed configuration
     /// @return The current price feed configuration
-    function priceFeedConfig() public view returns (PriceFeedAdapterStorage.PriceFeedConfig memory) {
-        return PriceFeedAdapterStorage.layout().priceFeedConfig;
+    function priceFeedConfig() public view returns (CoreAdapterStorage.PriceFeedConfig memory) {
+        return CoreAdapterStorage.layout().priceFeedConfig;
     }
 
     // ============ Internal Functions ============
@@ -300,13 +273,6 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
     /// @dev Uses keccak256 hash of "PriceFeed:" prefix + ticker for deterministic addressing
     function _saltForTicker(string memory ticker) internal pure returns (bytes32) {
         return keccak256(abi.encode("PriceFeed:", ticker));
-    }
-
-    /// @notice Required by the OZ UUPS module
-    /// @dev Only the owner can upgrade the contract
-    /// @param newImplementation Address of the new implementation contract
-    function _authorizeUpgrade(address newImplementation) internal view override onlyOwner {
-        if (newImplementation == address(0)) revert InvalidParameter("Invalid implementation address");
     }
 
     // ============ Private Functions ============
@@ -377,7 +343,7 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
         string memory symbol = symbols[index];
         int256 price = prices[index];
 
-        PriceFeedAdapterStorage.Layout storage s = PriceFeedAdapterStorage.layout();
+        CoreAdapterStorage.Layout storage s = CoreAdapterStorage.layout();
         address existingFeed = s.priceFeedAddresses[symbol];
 
         if (existingFeed == address(0)) {
@@ -401,7 +367,7 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
         bytes32[] calldata merkleProof
     ) private view {
         bytes32 resultId = SedaDataTypes.deriveResultId(result);
-        (bool isValid, ) = IProver(PriceFeedAdapterStorage.layout().sedaProver).verifyResultProof(
+        (bool isValid, ) = IProver(CoreAdapterStorage.layout().sedaProver).verifyResultProof(
             resultId,
             batchHeight,
             merkleProof
@@ -420,7 +386,7 @@ contract PriceFeedAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable,
     /// @param updateParams Runtime parameters used to reconstruct the expected DR ID
     /// @param result The oracle result containing the actual DR ID to validate
     function _validateDrId(UpdateParams calldata updateParams, SedaDataTypes.Result calldata result) private view {
-        PriceFeedAdapterStorage.Layout storage s = PriceFeedAdapterStorage.layout();
+        CoreAdapterStorage.Layout storage s = CoreAdapterStorage.layout();
         SedaDataTypes.RequestInputs memory dataRequestInputs = SedaDataTypes.RequestInputs({
             execProgramId: s.priceFeedConfig.execProgramId,
             tallyProgramId: s.priceFeedConfig.tallyProgramId,

@@ -119,7 +119,7 @@ bun test
 REPORT_GAS=true bun test
 
 # Run specific test file
-bunx hardhat test test/PriceFeedAdapter.test.ts
+bunx hardhat test test/priceFeeds/CoreAdapter.test.ts
 ```
 
 ### Code Linting

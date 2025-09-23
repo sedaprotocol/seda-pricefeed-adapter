@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-/// @title FastPriceFeedAdapterStorage
+/// @title FastAdapterStorage
 /// @author Open Oracle Association
-/// @notice Storage library for FastPriceFeedAdapter using the ERC-7201 storage pattern.
-/// @dev Storage layout for oracle-specific data in FastPriceFeedAdapter, separate from generic Pyth storage.
-/// @custom:storage-location fastpricefeedadapter.storage.v1
-library FastPriceFeedAdapterStorage {
+/// @notice Storage library for FastAdapter using the ERC-7201 storage pattern.
+/// @dev Storage layout for oracle-specific data in FastAdapter, separate from generic Pyth storage.
+/// @custom:storage-location fastadapter.storage.v1
+library FastAdapterStorage {
     // ============ Constants ============
 
-    /// @notice ERC-7201 storage slot for FastPriceFeedAdapterStorage (version 1)
-    /// @dev Namespace: "fastpricefeedadapter.storage.v1"
+    /// @notice ERC-7201 storage slot for FastAdapterStorage (version 1)
+    /// @dev Namespace: "fastadapter.storage.v1"
     ///      ERC-7201 calculation: keccak256(abi.encode(uint256(keccak256(namespace)) - 1)) & ~bytes32(uint256(0xff))
     bytes32 internal constant STORAGE_SLOT_V1 =
-        keccak256(abi.encode(uint256(keccak256("fastpricefeedadapter.storage.v1")) - 1)) & ~bytes32(uint256(0xff));
+        keccak256(abi.encode(uint256(keccak256("fastadapter.storage.v1")) - 1)) & ~bytes32(uint256(0xff));
 
     // ============ Structs ============
 
-    /// @notice Storage layout for FastPriceFeedAdapterStorage (v1)
+    /// @notice Storage layout for FastAdapterStorage (v1)
     /// @dev Do not change the order of fields. For new fields, create a new versioned layout.
     struct Layout {
         /// @notice The oracle prover contract used for result verification

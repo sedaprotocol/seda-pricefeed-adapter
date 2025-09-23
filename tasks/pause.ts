@@ -1,10 +1,10 @@
 import { getAdapterContract } from "./common/contract";
-import { sedaScope } from "./index";
+import { sedaScope } from "./scope";
 
 sedaScope
-  .task("adapter:pause", "Pause the PriceFeedAdapter (owner only)")
+  .task("adapter:pause", "Pause the CoreAdapter (owner only)")
   .setAction(async (_taskArgs, hre) => {
-    console.log(`\n⏸️  Pausing PriceFeedAdapter on ${hre.network.name}...`);
+    console.log(`\n⏸️  Pausing CoreAdapter on ${hre.network.name}...`);
 
     try {
       const { adapter } = await getAdapterContract(hre);
@@ -20,9 +20,9 @@ sedaScope
   });
 
 sedaScope
-  .task("adapter:unpause", "Unpause the PriceFeedAdapter (owner only)")
+  .task("adapter:unpause", "Unpause the CoreAdapter (owner only)")
   .setAction(async (_taskArgs, hre) => {
-    console.log(`\n▶️  Unpausing PriceFeedAdapter on ${hre.network.name}...`);
+    console.log(`\n▶️  Unpausing CoreAdapter on ${hre.network.name}...`);
 
     try {
       const { adapter } = await getAdapterContract(hre);

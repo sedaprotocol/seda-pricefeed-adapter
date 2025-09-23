@@ -3,11 +3,11 @@ pragma solidity ^0.8.28;
 
 import {SedaDataTypes} from "@seda-protocol/evm/contracts/libraries/SedaDataTypes.sol";
 
-/// @title FastPriceFeedStructs
+/// @title FastStructs
 /// @author Open Oracle Association
-/// @notice Structs for FastPriceFeedAdapter
-/// @dev Contains the structs for FastPriceFeedAdapter
-library FastPriceFeedStructs {
+/// @notice Structs for FastAdapter
+/// @dev Contains the structs for FastAdapter
+library FastStructs {
     /// @notice Struct for submitting signed data to the contract
     /// @dev Used for passing data and its corresponding signature for verification
     struct SignedPayload {

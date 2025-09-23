@@ -3,7 +3,7 @@ import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import type { Wallet } from "ethers";
 import { ethers, upgrades } from "hardhat";
-import type { FastPriceFeedAdapter } from "../../typechain-types/contracts/FastPriceFeedAdapter";
+import type { FastAdapter } from "../../typechain-types/contracts/FastAdapter";
 import type { FastProver } from "../../typechain-types/contracts/FastProver";
 import {
   computeAssetId,
@@ -15,9 +15,9 @@ import {
 } from "../helpers/priceFeedHelpers";
 import { createTrustedKey } from "../helpers/proverHelpers";
 
-describe("FastPriceFeedAdapter", () => {
+describe("FastAdapter", () => {
   // Fixture function
-  async function deployFastPriceFeedAdapterFixture() {
+  async function deployFastAdapterFixture() {
     const [owner, user] = await ethers.getSigners();
 
     // Deploy FastProver contract
@@ -26,12 +26,10 @@ describe("FastPriceFeedAdapter", () => {
       initializer: "initialize",
     });
 
-    // Deploy FastPriceFeedAdapter
-    const FastPriceFeedAdapter = await ethers.getContractFactory(
-      "FastPriceFeedAdapter",
-    );
-    const fastPriceFeedAdapter = await upgrades.deployProxy(
-      FastPriceFeedAdapter,
+    // Deploy FastAdapter
+    const FastAdapter = await ethers.getContractFactory("FastAdapter");
+    const fastAdapter = await upgrades.deployProxy(
+      FastAdapter,
       [await fastProver.getAddress(), owner.address],
       {
         initializer: "initialize",
@@ -39,7 +37,7 @@ describe("FastPriceFeedAdapter", () => {
     );
 
     return {
-      fastPriceFeedAdapter,
+      fastAdapter,
       fastProver,
       owner,
       user,
@@ -48,12 +46,12 @@ describe("FastPriceFeedAdapter", () => {
 
   describe("Initialization", () => {
     it("Should initialize with correct parameters", async () => {
-      const { fastPriceFeedAdapter, fastProver, owner } = await loadFixture(
-        deployFastPriceFeedAdapterFixture,
+      const { fastAdapter, fastProver, owner } = await loadFixture(
+        deployFastAdapterFixture,
       );
 
-      expect(await fastPriceFeedAdapter.owner()).to.equal(owner.address);
-      expect(await fastPriceFeedAdapter.getProver()).to.equal(
+      expect(await fastAdapter.owner()).to.equal(owner.address);
+      expect(await fastAdapter.getProver()).to.equal(
         await fastProver.getAddress(),
       );
     });
@@ -62,8 +60,8 @@ describe("FastPriceFeedAdapter", () => {
   describe("Access Control", () => {
     describe("Prover Management", () => {
       it("Should allow owner to update prover", async () => {
-        const { fastPriceFeedAdapter, fastProver } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
+        const { fastAdapter, fastProver } = await loadFixture(
+          deployFastAdapterFixture,
         );
 
         const [newOwner] = await ethers.getSigners();
@@ -76,71 +74,64 @@ describe("FastPriceFeedAdapter", () => {
           },
         );
 
-        await expect(
-          fastPriceFeedAdapter.updateProver(await newFastProver.getAddress()),
-        )
-          .to.emit(fastPriceFeedAdapter, "ProverUpdated")
+        await expect(fastAdapter.updateProver(await newFastProver.getAddress()))
+          .to.emit(fastAdapter, "ProverUpdated")
           .withArgs(
             await fastProver.getAddress(),
             await newFastProver.getAddress(),
           );
 
-        expect(await fastPriceFeedAdapter.getProver()).to.equal(
+        expect(await fastAdapter.getProver()).to.equal(
           await newFastProver.getAddress(),
         );
       });
 
       it("Should revert when non-owner tries to update prover", async () => {
-        const { fastPriceFeedAdapter, user } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
+        const { fastAdapter, user } = await loadFixture(
+          deployFastAdapterFixture,
         );
 
         await expect(
-          fastPriceFeedAdapter.connect(user).updateProver(user.address),
+          fastAdapter.connect(user).updateProver(user.address),
         ).to.be.revertedWithCustomError(
-          fastPriceFeedAdapter,
+          fastAdapter,
           "OwnableUnauthorizedAccount",
         );
       });
 
       it("Should revert when updating prover to zero address", async () => {
-        const { fastPriceFeedAdapter } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
-        );
+        const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
 
         await expect(
-          fastPriceFeedAdapter.updateProver(ethers.ZeroAddress),
-        ).to.be.revertedWithCustomError(
-          fastPriceFeedAdapter,
-          "ZeroAddressNotAllowed",
-        );
+          fastAdapter.updateProver(ethers.ZeroAddress),
+        ).to.be.revertedWithCustomError(fastAdapter, "ZeroAddressNotAllowed");
       });
     });
 
     describe("Pausable Functions", () => {
       it("Should allow owner to pause/unpause", async () => {
-        const { fastPriceFeedAdapter, owner } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
+        const { fastAdapter, owner } = await loadFixture(
+          deployFastAdapterFixture,
         );
 
-        await expect(fastPriceFeedAdapter.pause())
-          .to.emit(fastPriceFeedAdapter, "Paused")
+        await expect(fastAdapter.pause())
+          .to.emit(fastAdapter, "Paused")
           .withArgs(owner.address);
 
-        await expect(fastPriceFeedAdapter.unpause())
-          .to.emit(fastPriceFeedAdapter, "Unpaused")
+        await expect(fastAdapter.unpause())
+          .to.emit(fastAdapter, "Unpaused")
           .withArgs(owner.address);
       });
 
       it("Should revert when non-owner tries to pause", async () => {
-        const { fastPriceFeedAdapter, user } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
+        const { fastAdapter, user } = await loadFixture(
+          deployFastAdapterFixture,
         );
 
         await expect(
-          fastPriceFeedAdapter.connect(user).pause(),
+          fastAdapter.connect(user).pause(),
         ).to.be.revertedWithCustomError(
-          fastPriceFeedAdapter,
+          fastAdapter,
           "OwnableUnauthorizedAccount",
         );
       });
@@ -150,8 +141,8 @@ describe("FastPriceFeedAdapter", () => {
   describe("Price Feed Updates", () => {
     describe("Valid Updates", () => {
       it("Should successfully submit and store price update", async () => {
-        const { fastPriceFeedAdapter, fastProver } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
+        const { fastAdapter, fastProver } = await loadFixture(
+          deployFastAdapterFixture,
         );
 
         // Add trusted key
@@ -160,7 +151,7 @@ describe("FastPriceFeedAdapter", () => {
 
         // Submit price update
         await submitPriceUpdate(
-          fastPriceFeedAdapter,
+          fastAdapter,
           trustedKey,
           "BTC/USD",
           50000n,
@@ -168,20 +159,20 @@ describe("FastPriceFeedAdapter", () => {
         );
 
         // Verify asset was added to list
-        const assetIds = await fastPriceFeedAdapter.getAssetIds();
+        const assetIds = await fastAdapter.getAssetIds();
         expect(assetIds.length).to.equal(1);
 
         // Verify price info
         const assetId = assetIds[0];
-        const priceInfo = await fastPriceFeedAdapter.getPriceInfo(assetId);
+        const priceInfo = await fastAdapter.getPriceInfo(assetId);
         expect(priceInfo.price).to.equal(50000n);
         expect(priceInfo.conf).to.equal(100n);
         expect(priceInfo.publishTime).to.be.greaterThan(0);
       });
 
       it("Should handle multiple price updates", async () => {
-        const { fastPriceFeedAdapter, fastProver } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
+        const { fastAdapter, fastProver } = await loadFixture(
+          deployFastAdapterFixture,
         );
 
         const trustedKey = createTrustedKey();
@@ -189,27 +180,21 @@ describe("FastPriceFeedAdapter", () => {
 
         // Submit multiple updates
         await submitPriceUpdate(
-          fastPriceFeedAdapter,
+          fastAdapter,
           trustedKey,
           "BTC/USD",
           50000n,
           100n,
         );
-        await submitPriceUpdate(
-          fastPriceFeedAdapter,
-          trustedKey,
-          "ETH/USD",
-          3000n,
-          50n,
-        );
+        await submitPriceUpdate(fastAdapter, trustedKey, "ETH/USD", 3000n, 50n);
 
-        const assetIds = await fastPriceFeedAdapter.getAssetIds();
+        const assetIds = await fastAdapter.getAssetIds();
         expect(assetIds.length).to.equal(2);
       });
 
       it("Should update existing price with newer timestamp", async () => {
-        const { fastPriceFeedAdapter, fastProver } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
+        const { fastAdapter, fastProver } = await loadFixture(
+          deployFastAdapterFixture,
         );
 
         const trustedKey = createTrustedKey();
@@ -217,30 +202,28 @@ describe("FastPriceFeedAdapter", () => {
 
         // Submit initial price
         await submitPriceUpdate(
-          fastPriceFeedAdapter,
+          fastAdapter,
           trustedKey,
           "BTC/USD",
           50000n,
           100n,
         );
 
-        const assetIds = await fastPriceFeedAdapter.getAssetIds();
+        const assetIds = await fastAdapter.getAssetIds();
         const assetId = assetIds[0];
-        const initialPriceInfo =
-          await fastPriceFeedAdapter.getPriceInfo(assetId);
+        const initialPriceInfo = await fastAdapter.getPriceInfo(assetId);
 
         // Wait a bit and submit updated price
         await new Promise((resolve) => setTimeout(resolve, 1000));
         await submitPriceUpdate(
-          fastPriceFeedAdapter,
+          fastAdapter,
           trustedKey,
           "BTC/USD",
           51000n,
           120n,
         );
 
-        const updatedPriceInfo =
-          await fastPriceFeedAdapter.getPriceInfo(assetId);
+        const updatedPriceInfo = await fastAdapter.getPriceInfo(assetId);
         expect(updatedPriceInfo.price).to.equal(51000n);
         expect(updatedPriceInfo.publishTime).to.be.greaterThan(
           initialPriceInfo.publishTime,
@@ -250,8 +233,8 @@ describe("FastPriceFeedAdapter", () => {
 
     describe("Invalid Updates", () => {
       it("Should revert with invalid signature", async () => {
-        const { fastPriceFeedAdapter, fastProver } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
+        const { fastAdapter, fastProver } = await loadFixture(
+          deployFastAdapterFixture,
         );
 
         const invalidPayload = ethers.AbiCoder.defaultAbiCoder().encode(
@@ -260,7 +243,7 @@ describe("FastPriceFeedAdapter", () => {
         );
 
         // Invalid signature length (2 bytes)
-        await expect(fastPriceFeedAdapter.updatePriceFeeds([invalidPayload]))
+        await expect(fastAdapter.updatePriceFeeds([invalidPayload]))
           .to.be.revertedWithCustomError(
             fastProver,
             "ECDSAInvalidSignatureLength",
@@ -269,8 +252,8 @@ describe("FastPriceFeedAdapter", () => {
       });
 
       it("Should revert with empty batch", async () => {
-        const { fastPriceFeedAdapter, fastProver } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
+        const { fastAdapter, fastProver } = await loadFixture(
+          deployFastAdapterFixture,
         );
 
         const trustedKey = createTrustedKey();
@@ -317,16 +300,13 @@ describe("FastPriceFeedAdapter", () => {
         );
 
         await expect(
-          fastPriceFeedAdapter.updatePriceFeeds([signedPayload]),
-        ).to.be.revertedWithCustomError(
-          fastPriceFeedAdapter,
-          "ValidationFailed",
-        );
+          fastAdapter.updatePriceFeeds([signedPayload]),
+        ).to.be.revertedWithCustomError(fastAdapter, "ValidationFailed");
       });
 
       it("Should revert with invalid exit code", async () => {
-        const { fastPriceFeedAdapter, fastProver } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
+        const { fastAdapter, fastProver } = await loadFixture(
+          deployFastAdapterFixture,
         );
 
         const trustedKey = createTrustedKey();
@@ -388,19 +368,14 @@ describe("FastPriceFeedAdapter", () => {
         );
 
         await expect(
-          fastPriceFeedAdapter.updatePriceFeeds([signedPayload]),
-        ).to.be.revertedWithCustomError(
-          fastPriceFeedAdapter,
-          "ValidationFailed",
-        );
+          fastAdapter.updatePriceFeeds([signedPayload]),
+        ).to.be.revertedWithCustomError(fastAdapter, "ValidationFailed");
       });
 
       it("Should revert when paused", async () => {
-        const { fastPriceFeedAdapter } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
-        );
+        const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
 
-        await fastPriceFeedAdapter.pause();
+        await fastAdapter.pause();
 
         // Fix: Use struct syntax to match contract
         const invalidPayload = ethers.AbiCoder.defaultAbiCoder().encode(
@@ -409,29 +384,24 @@ describe("FastPriceFeedAdapter", () => {
         );
 
         await expect(
-          fastPriceFeedAdapter.updatePriceFeeds([invalidPayload]),
-        ).to.be.revertedWithCustomError(fastPriceFeedAdapter, "EnforcedPause");
+          fastAdapter.updatePriceFeeds([invalidPayload]),
+        ).to.be.revertedWithCustomError(fastAdapter, "EnforcedPause");
       });
     });
 
     describe("Edge Cases", () => {
       it("Should return empty asset IDs initially", async () => {
-        const { fastPriceFeedAdapter } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
-        );
+        const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
 
-        const assetIds = await fastPriceFeedAdapter.getAssetIds();
+        const assetIds = await fastAdapter.getAssetIds();
         expect(assetIds.length).to.equal(0);
       });
 
       it("Should return zero price info for non-existent asset", async () => {
-        const { fastPriceFeedAdapter } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
-        );
+        const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
 
         const nonExistentAssetId = ethers.id("non_existent");
-        const priceInfo =
-          await fastPriceFeedAdapter.getPriceInfo(nonExistentAssetId);
+        const priceInfo = await fastAdapter.getPriceInfo(nonExistentAssetId);
 
         expect(priceInfo.price).to.equal(0);
         expect(priceInfo.conf).to.equal(0);
@@ -439,8 +409,8 @@ describe("FastPriceFeedAdapter", () => {
       });
 
       it("Should revert with invalid signature", async () => {
-        const { fastPriceFeedAdapter, fastProver } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
+        const { fastAdapter, fastProver } = await loadFixture(
+          deployFastAdapterFixture,
         );
 
         const invalidPayload = ethers.AbiCoder.defaultAbiCoder().encode(
@@ -450,7 +420,7 @@ describe("FastPriceFeedAdapter", () => {
 
         // The error comes from ECDSA.recover() which throws ECDSAInvalidSignatureLength
         await expect(
-          fastPriceFeedAdapter.updatePriceFeeds([invalidPayload]),
+          fastAdapter.updatePriceFeeds([invalidPayload]),
         ).to.be.revertedWithCustomError(
           fastProver,
           "ECDSAInvalidSignatureLength",
@@ -458,8 +428,8 @@ describe("FastPriceFeedAdapter", () => {
       });
 
       it("Should revert with ValidationFailed for invalid exit code", async () => {
-        const { fastPriceFeedAdapter, fastProver } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
+        const { fastAdapter, fastProver } = await loadFixture(
+          deployFastAdapterFixture,
         );
 
         const trustedKey = createTrustedKey();
@@ -468,16 +438,13 @@ describe("FastPriceFeedAdapter", () => {
         const invalidPayload = await createInvalidExitCodePayload(trustedKey);
 
         await expect(
-          fastPriceFeedAdapter.updatePriceFeeds([invalidPayload]),
-        ).to.be.revertedWithCustomError(
-          fastPriceFeedAdapter,
-          "ValidationFailed",
-        );
+          fastAdapter.updatePriceFeeds([invalidPayload]),
+        ).to.be.revertedWithCustomError(fastAdapter, "ValidationFailed");
       });
 
       it("Should revert with ValidationFailed for empty batch", async () => {
-        const { fastPriceFeedAdapter, fastProver } = await loadFixture(
-          deployFastPriceFeedAdapterFixture,
+        const { fastAdapter, fastProver } = await loadFixture(
+          deployFastAdapterFixture,
         );
 
         const trustedKey = createTrustedKey();
@@ -486,25 +453,22 @@ describe("FastPriceFeedAdapter", () => {
         const emptyPayload = await createEmptyBatchPayload(trustedKey);
 
         await expect(
-          fastPriceFeedAdapter.updatePriceFeeds([emptyPayload]),
-        ).to.be.revertedWithCustomError(
-          fastPriceFeedAdapter,
-          "ValidationFailed",
-        );
+          fastAdapter.updatePriceFeeds([emptyPayload]),
+        ).to.be.revertedWithCustomError(fastAdapter, "ValidationFailed");
       });
     });
   });
 
   describe("IPyth Interface", () => {
-    let fastPriceFeedAdapter: FastPriceFeedAdapter;
+    let fastAdapter: FastAdapter;
     let fastProver: FastProver;
     let _owner: SignerWithAddress;
     let trustedKey: Wallet;
     let assetId: string;
 
     beforeEach(async () => {
-      const fixture = await loadFixture(deployFastPriceFeedAdapterFixture);
-      fastPriceFeedAdapter = fixture.fastPriceFeedAdapter;
+      const fixture = await loadFixture(deployFastAdapterFixture);
+      fastAdapter = fixture.fastAdapter;
       fastProver = fixture.fastProver;
       _owner = fixture.owner;
 
@@ -517,14 +481,14 @@ describe("FastPriceFeedAdapter", () => {
       it("Should return price for existing asset", async () => {
         // First, submit a price update
         await submitPriceUpdate(
-          fastPriceFeedAdapter,
+          fastAdapter,
           trustedKey,
           "BTC/USD",
           50000n,
           100n,
         );
 
-        const price = await fastPriceFeedAdapter.getPriceUnsafe(assetId);
+        const price = await fastAdapter.getPriceUnsafe(assetId);
         expect(price.price).to.equal(50000n);
         expect(price.conf).to.equal(100n);
         expect(price.expo).to.equal(-8);
@@ -534,11 +498,8 @@ describe("FastPriceFeedAdapter", () => {
       it("Should revert for non-existent asset", async () => {
         const nonExistentId = ethers.id("non_existent");
         await expect(
-          fastPriceFeedAdapter.getPriceUnsafe(nonExistentId),
-        ).to.be.revertedWithCustomError(
-          fastPriceFeedAdapter,
-          "PriceFeedNotFound",
-        );
+          fastAdapter.getPriceUnsafe(nonExistentId),
+        ).to.be.revertedWithCustomError(fastAdapter, "PriceFeedNotFound");
       });
     });
 
@@ -546,14 +507,14 @@ describe("FastPriceFeedAdapter", () => {
       it("Should return EMA price for existing asset", async () => {
         // Submit a price update
         await submitPriceUpdate(
-          fastPriceFeedAdapter,
+          fastAdapter,
           trustedKey,
           "BTC/USD",
           50000n,
           100n,
         );
 
-        const emaPrice = await fastPriceFeedAdapter.getEmaPriceUnsafe(assetId);
+        const emaPrice = await fastAdapter.getEmaPriceUnsafe(assetId);
         expect(emaPrice.price).to.equal(50000n); // EMA price should match regular price initially
         expect(emaPrice.conf).to.equal(100n);
         expect(emaPrice.expo).to.equal(-8);
@@ -563,11 +524,8 @@ describe("FastPriceFeedAdapter", () => {
       it("Should revert for non-existent asset", async () => {
         const nonExistentId = ethers.id("non_existent");
         await expect(
-          fastPriceFeedAdapter.getEmaPriceUnsafe(nonExistentId),
-        ).to.be.revertedWithCustomError(
-          fastPriceFeedAdapter,
-          "PriceFeedNotFound",
-        );
+          fastAdapter.getEmaPriceUnsafe(nonExistentId),
+        ).to.be.revertedWithCustomError(fastAdapter, "PriceFeedNotFound");
       });
     });
 
@@ -577,7 +535,7 @@ describe("FastPriceFeedAdapter", () => {
         const pastTime = createPastTimestamp(10); // 10 seconds ago
 
         await submitPriceUpdate(
-          fastPriceFeedAdapter,
+          fastAdapter,
           trustedKey,
           "BTC/USD",
           50000n,
@@ -586,21 +544,15 @@ describe("FastPriceFeedAdapter", () => {
         );
 
         // Use a reasonable age limit
-        const price = await fastPriceFeedAdapter.getPriceNoOlderThan(
-          assetId,
-          86400,
-        ); // 24 hours
+        const price = await fastAdapter.getPriceNoOlderThan(assetId, 86400); // 24 hours
         expect(price.price).to.equal(50000n);
       });
 
       it("Should revert for non-existent asset", async () => {
         const nonExistentId = ethers.id("non_existent");
         await expect(
-          fastPriceFeedAdapter.getPriceNoOlderThan(nonExistentId, 3600),
-        ).to.be.revertedWithCustomError(
-          fastPriceFeedAdapter,
-          "PriceFeedNotFound",
-        );
+          fastAdapter.getPriceNoOlderThan(nonExistentId, 3600),
+        ).to.be.revertedWithCustomError(fastAdapter, "PriceFeedNotFound");
       });
     });
 
@@ -609,7 +561,7 @@ describe("FastPriceFeedAdapter", () => {
         // Use a publish time that's clearly in the past to avoid timing issues
         const pastTime = createPastTimestamp(10); // 10 seconds ago
         await submitPriceUpdate(
-          fastPriceFeedAdapter,
+          fastAdapter,
           trustedKey,
           "BTC/USD",
           50000n,
@@ -618,7 +570,7 @@ describe("FastPriceFeedAdapter", () => {
         );
 
         // Use a very large age limit to avoid any timing issues
-        const emaPrice = await fastPriceFeedAdapter.getEmaPriceNoOlderThan(
+        const emaPrice = await fastAdapter.getEmaPriceNoOlderThan(
           assetId,
           86400 * 365,
         ); // 1 year
@@ -628,7 +580,7 @@ describe("FastPriceFeedAdapter", () => {
 
     describe("getUpdateFee", () => {
       it("Should return zero fee", async () => {
-        const fee = await fastPriceFeedAdapter.getUpdateFee([
+        const fee = await fastAdapter.getUpdateFee([
           ethers.toUtf8Bytes("test"),
         ]);
         expect(fee).to.equal(0);
@@ -638,8 +590,8 @@ describe("FastPriceFeedAdapter", () => {
     describe("getTwapUpdateFee", () => {
       it("Should revert with NotImplemented", async () => {
         await expect(
-          fastPriceFeedAdapter.getTwapUpdateFee([ethers.toUtf8Bytes("test")]),
-        ).to.be.revertedWithCustomError(fastPriceFeedAdapter, "NotImplemented");
+          fastAdapter.getTwapUpdateFee([ethers.toUtf8Bytes("test")]),
+        ).to.be.revertedWithCustomError(fastAdapter, "NotImplemented");
       });
     });
 
@@ -656,7 +608,7 @@ describe("FastPriceFeedAdapter", () => {
         const futureTime = createPastTimestamp(3600);
 
         await expect(
-          fastPriceFeedAdapter.updatePriceFeedsIfNecessary(
+          fastAdapter.updatePriceFeedsIfNecessary(
             [updateData],
             [assetId],
             [futureTime],
@@ -673,15 +625,12 @@ describe("FastPriceFeedAdapter", () => {
         );
 
         await expect(
-          fastPriceFeedAdapter.updatePriceFeedsIfNecessary(
+          fastAdapter.updatePriceFeedsIfNecessary(
             [updateData],
             [assetId],
             [0, 1], // Different lengths
           ),
-        ).to.be.revertedWithCustomError(
-          fastPriceFeedAdapter,
-          "InvalidArgument",
-        );
+        ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
       });
     });
 
@@ -698,13 +647,12 @@ describe("FastPriceFeedAdapter", () => {
         );
 
         // Use staticCall to get the return value without executing a transaction
-        const priceFeeds =
-          await fastPriceFeedAdapter.parsePriceFeedUpdates.staticCall(
-            [updateData],
-            [assetId],
-            0,
-            Math.floor(Date.now() / 1000) + 3600, // Search up to 1 hour in the future
-          );
+        const priceFeeds = await fastAdapter.parsePriceFeedUpdates.staticCall(
+          [updateData],
+          [assetId],
+          0,
+          Math.floor(Date.now() / 1000) + 3600, // Search up to 1 hour in the future
+        );
 
         expect(priceFeeds.length).to.equal(1);
         expect(priceFeeds[0].id).to.equal(assetId);
@@ -726,7 +674,7 @@ describe("FastPriceFeedAdapter", () => {
 
         // Use staticCall to get the return value without executing a transaction
         const result =
-          await fastPriceFeedAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
+          await fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
             [updateData],
             [assetId],
             0,
@@ -757,7 +705,7 @@ describe("FastPriceFeedAdapter", () => {
 
         // Use staticCall to get the return value without executing a transaction
         const priceFeeds =
-          await fastPriceFeedAdapter.parsePriceFeedUpdatesUnique.staticCall(
+          await fastAdapter.parsePriceFeedUpdatesUnique.staticCall(
             [updateData],
             [assetId],
             0,
@@ -772,31 +720,27 @@ describe("FastPriceFeedAdapter", () => {
     describe("parseTwapPriceFeedUpdates", () => {
       it("Should revert with NotImplemented", async () => {
         await expect(
-          fastPriceFeedAdapter.parseTwapPriceFeedUpdates(
+          fastAdapter.parseTwapPriceFeedUpdates(
             [ethers.toUtf8Bytes("test")],
             [assetId],
           ),
-        ).to.be.revertedWithCustomError(fastPriceFeedAdapter, "NotImplemented");
+        ).to.be.revertedWithCustomError(fastAdapter, "NotImplemented");
       });
     });
   });
 
   describe("UUPS Upgrade", () => {
     it("Should upgrade and preserve state", async () => {
-      const { fastPriceFeedAdapter } = await loadFixture(
-        deployFastPriceFeedAdapterFixture,
-      );
+      const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
 
       // Verify initial state
-      const initialProver = await fastPriceFeedAdapter.getProver();
+      const initialProver = await fastAdapter.getProver();
 
       // Upgrade the contract
-      const FastPriceFeedAdapterV2 = await ethers.getContractFactory(
-        "FastPriceFeedAdapter",
-      );
+      const FastAdapterV2 = await ethers.getContractFactory("FastAdapter");
       const upgradedContract = await upgrades.upgradeProxy(
-        fastPriceFeedAdapter,
-        FastPriceFeedAdapterV2,
+        fastAdapter,
+        FastAdapterV2,
       );
 
       // Verify state is preserved
