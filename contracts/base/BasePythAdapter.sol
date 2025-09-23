@@ -13,40 +13,25 @@ import {PythAdapterStorage} from "../storage/PythAdapterStorage.sol";
 abstract contract BasePythAdapter is IPyth {
     // ============ Custom Errors ============
 
-    /// @notice Thrown when a function is not implemented
-    error NotImplemented();
-
     /// @notice Thrown when more than one matching update exists within the requested time window
     /// @param id The price ID that has multiple updates
     error MultiplePriceUpdatesWithinRange(bytes32 id);
+
+    /// @notice Thrown if TWAP function is not implemented.
+    error TwapNotImplemented();
 
     /// @notice Thrown when result validation fails during processing
     /// @param reason Human-readable description of the validation failure
     error ValidationFailed(string reason);
 
-    /// @notice Thrown when provided updateData contains entries that are not strictly necessary
-    error UpdateDataNotMinimal();
-
     // ============ IPyth Implementation ============
 
-    /// @notice Get price that is no older than `age` seconds
-    /// @param id The price ID to get the price for
-    /// @return price The price
+    /// @inheritdoc IPyth
     function getPriceUnsafe(bytes32 id) external view override returns (PythStructs.Price memory price) {
         return _getPrice(id, 0, false);
     }
 
-    /// @notice Get exponentially-weighted moving average price that is no older than `age` seconds
-    /// @param id The price ID to get the price for
-    /// @return price The price
-    function getEmaPriceUnsafe(bytes32 id) external view override returns (PythStructs.Price memory price) {
-        return _getPrice(id, 0, true);
-    }
-
-    /// @notice Get price that is no older than `age` seconds
-    /// @param id The price ID to get the price for
-    /// @param age The age of the price
-    /// @return price The price
+    /// @inheritdoc IPyth
     function getPriceNoOlderThan(
         bytes32 id,
         uint256 age
@@ -54,15 +39,30 @@ abstract contract BasePythAdapter is IPyth {
         return _getPrice(id, age, false);
     }
 
-    /// @notice Get exponentially-weighted moving average price that is no older than `age` seconds
-    /// @param id The price ID to get the price for
-    /// @param age The age of the price
-    /// @return price The price
+    /// @inheritdoc IPyth
+    function getEmaPriceUnsafe(bytes32 id) external view override returns (PythStructs.Price memory price) {
+        return _getPrice(id, 0, true);
+    }
+
+    /// @inheritdoc IPyth
     function getEmaPriceNoOlderThan(
         bytes32 id,
         uint256 age
     ) external view override returns (PythStructs.Price memory price) {
         return _getPrice(id, age, true);
+    }
+
+    /// @notice Update price feeds with given update messages.
+    /// @dev This implementation does not require or charge any fees; calls are always free.
+    /// Prices will be updated if they are more recent than the current stored prices.
+    /// The call will succeed even if the update is not the most recent.
+    /// Reverts if the updateData is invalid.
+    /// @param updateData Array of price update data.
+    function updatePriceFeeds(bytes[] calldata updateData) external payable override {
+        for (uint256 i = 0; i < updateData.length; ++i) {
+            // TODO: we could also pass the strict
+            _processSignedPayload(updateData[i], true);
+        }
     }
 
     /// @notice Get update fee
@@ -76,15 +76,7 @@ abstract contract BasePythAdapter is IPyth {
     /// @return The update fee (function reverts - not implemented)
     // solhint-disable-next-line use-natspec
     function getTwapUpdateFee(bytes[] calldata /* updateData */) external pure override returns (uint256) {
-        revert NotImplemented();
-    }
-
-    /// @notice Update price feeds
-    /// @param updateData The update data to update
-    function updatePriceFeeds(bytes[] calldata updateData) external payable override {
-        for (uint256 i = 0; i < updateData.length; ++i) {
-            _processSignedPayload(updateData[i], true);
-        }
+        revert TwapNotImplemented();
     }
 
     /// @notice Update price feeds if necessary
@@ -168,7 +160,7 @@ abstract contract BasePythAdapter is IPyth {
         bytes[] calldata /* updateData */,
         bytes32[] calldata /* priceIds */
     ) external payable override returns (PythStructs.TwapPriceFeed[] memory) {
-        revert NotImplemented();
+        revert TwapNotImplemented();
     }
 
     /// @notice Parses price feed updates with uniqueness check
@@ -337,6 +329,40 @@ abstract contract BasePythAdapter is IPyth {
         }
     }
 
+    /// @notice Updates price information with time-based validation
+    /// @param priceId The unique identifier for the price feed
+    /// @param newInfo The new price information to store
+    /// @param strict Whether to enforce strict time validation
+    /// @dev strict=false: Allow updates only if newInfo.publishTime > existing.publishTime
+    /// @dev strict=true: Revert if newInfo.publishTime <= existing.publishTime
+    /// @dev Use strict=true for user operations, strict=false for batch processing
+    function _applyUpdate(bytes32 priceId, PythAdapterStorage.PriceInfo memory newInfo, bool strict) internal {
+        PythAdapterStorage.Layout storage s = PythAdapterStorage.layout();
+        PythAdapterStorage.PriceInfo storage current = s.priceInfos[priceId];
+
+        bool isNewer = newInfo.publishTime > current.publishTime;
+        if (strict) {
+            if (!isNewer) revert PythErrors.StalePrice();
+        } else {
+            if (!isNewer) return;
+        }
+
+        // If this is a new price feed, add to assetIds before updating
+        if (current.publishTime == 0) {
+            s.assetIds.push(priceId);
+        }
+
+        // Update all fields individually (more gas efficient than struct assignment)
+        current.price = newInfo.price;
+        current.conf = newInfo.conf;
+        current.expo = newInfo.expo;
+        current.publishTime = newInfo.publishTime;
+        current.emaPrice = newInfo.emaPrice;
+        current.emaConf = newInfo.emaConf;
+
+        emit PriceFeedUpdate(priceId, newInfo.publishTime, newInfo.price, newInfo.conf);
+    }
+
     // ============ Private Functions ============
 
     /// @notice Finds the index of a price ID in the requested array
@@ -383,40 +409,6 @@ abstract contract BasePythAdapter is IPyth {
     /// @param updateStorage Whether to update storage or just parse
     /// @dev This is the main hook for oracle-specific verification and processing
     function _processSignedPayload(bytes calldata signedPayload, bool updateStorage) internal virtual;
-
-    /// @notice Updates price information with time-based validation
-    /// @param priceId The unique identifier for the price feed
-    /// @param newInfo The new price information to store
-    /// @param strict Whether to enforce strict time validation
-    /// @dev strict=false: Allow updates only if newInfo.publishTime > existing.publishTime
-    /// @dev strict=true: Revert if newInfo.publishTime <= existing.publishTime
-    /// @dev Use strict=true for user operations, strict=false for batch processing
-    function _applyUpdate(bytes32 priceId, PythAdapterStorage.PriceInfo memory newInfo, bool strict) internal {
-        PythAdapterStorage.Layout storage s = PythAdapterStorage.layout();
-        PythAdapterStorage.PriceInfo storage current = s.priceInfos[priceId];
-
-        bool isNewer = newInfo.publishTime > current.publishTime;
-        if (strict) {
-            if (!isNewer) revert PythErrors.StalePrice();
-        } else {
-            if (!isNewer) return;
-        }
-
-        // If this is a new price feed, add to assetIds before updating
-        if (current.publishTime == 0) {
-            s.assetIds.push(priceId);
-        }
-
-        // Update all fields individually (more gas efficient than struct assignment)
-        current.price = newInfo.price;
-        current.conf = newInfo.conf;
-        current.expo = newInfo.expo;
-        current.publishTime = newInfo.publishTime;
-        current.emaPrice = newInfo.emaPrice;
-        current.emaConf = newInfo.emaConf;
-
-        emit PriceFeedUpdate(priceId, newInfo.publishTime, newInfo.price, newInfo.conf);
-    }
 
     /// @notice Processes filtered update data with validation and filtering
     /// @param updateData The update data to process

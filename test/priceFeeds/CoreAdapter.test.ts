@@ -999,6 +999,9 @@ describe("CoreAdapter", () => {
       const upgradedContract = await upgrades.upgradeProxy(
         priceFeedAdapter,
         CoreAdapterV2,
+        {
+          call: { fn: "initializeV2", args: [] },
+        },
       );
 
       // Verify that the proxy address stays the same
@@ -1094,8 +1097,11 @@ describe("CoreAdapter", () => {
 
       // Try to upgrade to zero address directly
       await expect(priceFeedAdapter.upgradeToAndCall(ethers.ZeroAddress, "0x"))
-        .to.be.revertedWithCustomError(priceFeedAdapter, "InvalidParameter")
-        .withArgs("Invalid implementation address");
+        .to.be.revertedWithCustomError(
+          priceFeedAdapter,
+          "ZeroAddressNotAllowed",
+        )
+        .withArgs("implementation");
     });
     it("Should revert when trying to reinitialize", async () => {
       const { priceFeedAdapter, owner } = await loadFixture(
