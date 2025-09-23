@@ -160,12 +160,11 @@ describe("FastProver", () => {
       // Valid signature
       const validSig = await trustedKey1.signingKey.sign(dataHash);
       const validSignature = ethers.Signature.from(validSig).serialized;
-      const [valid, attester] = await fastProver.verifyData(
+      const attester = await fastProver.verifyData(
         dataHash,
         validSignature,
       );
 
-      expect(valid).to.be.true;
       expect(attester).to.equal(trustedKey1.address);
 
       // Invalid signature (untrusted key)

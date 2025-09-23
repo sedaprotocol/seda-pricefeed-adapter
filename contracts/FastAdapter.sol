@@ -162,8 +162,7 @@ contract FastAdapter is BaseAdapter, BasePythAdapter {
 
         // Validate signature
         bytes32 dataHash = keccak256(payload.data);
-        (bool valid, ) = FastProver(getProver()).verifyData(dataHash, payload.signature);
-        if (!valid) revert ValidationFailed("Signature verification failed");
+        FastProver(getProver()).verifyData(dataHash, payload.signature);
 
         // Decode the verified data
         FastStructs.PriceUpdateBatch memory batch = abi.decode(payload.data, (FastStructs.PriceUpdateBatch));

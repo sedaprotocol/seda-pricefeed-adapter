@@ -6,8 +6,7 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-
-// TODO: Consider using ERC-7201 pattern for improved upgradeability and storage layout safety.
+import {FastProverStorage} from "../storage/FastProverStorage.sol";
 
 /// @title SedaFastProver
 /// @author Open Oracle Association
@@ -47,15 +46,6 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
     error AlreadyInitialized();
 
     // ============ State Variables ============
-
-    /// @notice Mapping of trusted public keys to their enabled status
-    mapping(address => bool) public trustedKeys;
-
-    /// @notice Array of all trusted public keys for enumeration
-    address[] public trustedKeysList;
-
-    /// @notice Mapping to track if a key exists in the trustedKeysList array
-    mapping(address => bool) private keyExists;
 
     /// @notice Version of the contract for upgrade tracking
     uint256 public constant VERSION = 1;
@@ -101,13 +91,14 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
     function addTrustedKey(address key) external onlyOwner {
         if (key == address(0)) revert InvalidKeyAddress();
 
-        if (trustedKeys[key]) {
+        FastProverStorage.Layout storage s = FastProverStorage.layout();
+        if (s.trustedKeys[key]) {
             revert DuplicateTrustedKey(key);
         }
 
-        trustedKeys[key] = true;
-        trustedKeysList.push(key);
-        keyExists[key] = true;
+        s.trustedKeys[key] = true;
+        s.trustedKeysList.push(key);
+        s.keyExists[key] = true;
 
         emit TrustedKeyAdded(key, msg.sender);
     }
@@ -115,18 +106,19 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
     /// @notice Removes a trusted public key
     /// @param key The public key to remove from trusted keys
     function removeTrustedKey(address key) external onlyOwner {
-        if (!trustedKeys[key]) {
+        FastProverStorage.Layout storage s = FastProverStorage.layout();
+        if (!s.trustedKeys[key]) {
             revert TrustedKeyNotFound(key);
         }
 
-        trustedKeys[key] = false;
-        keyExists[key] = false;
+        s.trustedKeys[key] = false;
+        s.keyExists[key] = false;
 
         // Remove from array by swapping with last element and popping
-        for (uint256 i = 0; i < trustedKeysList.length; ++i) {
-            if (trustedKeysList[i] == key) {
-                trustedKeysList[i] = trustedKeysList[trustedKeysList.length - 1];
-                trustedKeysList.pop();
+        for (uint256 i = 0; i < s.trustedKeysList.length; ++i) {
+            if (s.trustedKeysList[i] == key) {
+                s.trustedKeysList[i] = s.trustedKeysList[s.trustedKeysList.length - 1];
+                s.trustedKeysList.pop();
                 break;
             }
         }
@@ -137,20 +129,20 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
     /// @notice Gets the total number of trusted keys
     /// @return The number of trusted keys
     function getTrustedKeysCount() external view returns (uint256) {
-        return trustedKeysList.length;
+        return FastProverStorage.layout().trustedKeysList.length;
     }
 
     /// @notice Gets all trusted keys
     /// @return An array of all trusted public keys
     function getAllTrustedKeys() external view returns (address[] memory) {
-        return trustedKeysList;
+        return FastProverStorage.layout().trustedKeysList;
     }
 
     /// @notice Checks if a key is trusted
     /// @param key The public key to check
     /// @return True if the key is trusted, false otherwise
     function isTrustedKey(address key) external view returns (bool) {
-        return trustedKeys[key];
+        return FastProverStorage.layout().trustedKeys[key];
     }
 
     // ============ Pausable Functions ============
@@ -170,34 +162,31 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
     /// @notice Verifies price data using ECDSA signatures from trusted FAST keys
     /// @param dataHash The hash of the price data to verify
     /// @param signature The ECDSA signature to verify
-    /// @return valid True if the signature is valid and from a trusted key
     /// @return attester The address of the attester that signed the price data
+    /// @dev Reverts with SignatureVerificationFailed if the signature is invalid or from an untrusted key
     function verifyData(
         bytes32 dataHash,
         bytes calldata signature
-    ) external view whenNotPaused returns (bool valid, address attester) {
+    ) external view whenNotPaused returns (address attester) {
         return _verifySignature(dataHash, signature);
     }
 
     /// @notice Internal function to verify signatures (common logic)
     /// @param messageHash The hash of the message to verify
     /// @param signature The ECDSA signature to verify
-    /// @return valid True if the signature is valid and from a trusted key
     /// @return attester The address of the attester that signed the message
-    function _verifySignature(
-        bytes32 messageHash,
-        bytes calldata signature
-    ) internal view returns (bool valid, address attester) {
+    /// @dev Reverts with SignatureVerificationFailed if the signature is invalid or from an untrusted key
+    function _verifySignature(bytes32 messageHash, bytes calldata signature) internal view returns (address attester) {
         // Recover the signer from the signature
         // ECDSA.recover() already validates signature length and format
         address signer = messageHash.recover(signature);
 
         // Check if the signer is a trusted key
-        if (!trustedKeys[signer]) {
+        if (!FastProverStorage.layout().trustedKeys[signer]) {
             revert SignatureVerificationFailed(signer);
         }
 
-        return (true, signer);
+        return signer;
     }
 
     // ============ Utility Functions ============
