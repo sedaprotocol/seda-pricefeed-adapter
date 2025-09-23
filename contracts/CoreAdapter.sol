@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
-import {BaseAdapter} from "./base/BaseAdapter.sol";
+import {BaseUpgradeable} from "./base/BaseUpgradeable.sol";
 
 import {IProver} from "@seda-protocol/evm/contracts/interfaces/IProver.sol";
 import {SedaDataTypes} from "@seda-protocol/evm/contracts/libraries/SedaDataTypes.sol";
@@ -30,7 +30,7 @@ import {CoreAdapterStorage} from "./storage/CoreAdapterStorage.sol";
 ///                   are protected by SEDA's consensus mechanism and Merkle proof verification.
 /// @custom:upgrades This contract uses UUPS upgrade pattern and ERC-7201 storage layout.
 ///                   Storage layout is versioned (v1) to prevent collisions during upgrades.
-contract CoreAdapter is BaseAdapter {
+contract CoreAdapter is BaseUpgradeable {
     // ============ Constants ============
 
     /// @notice Default number of decimal places for price data precision
@@ -109,12 +109,12 @@ contract CoreAdapter is BaseAdapter {
         address priceFeedImplementation,
         address owner,
         CoreAdapterStorage.PriceFeedConfig memory _priceFeedConfig
-    ) public initializer {
+    ) public virtual initializer {
         if (sedaProverAddress == address(0)) revert ZeroAddressNotAllowed("SEDA prover");
         if (priceFeedImplementation == address(0)) revert ZeroAddressNotAllowed("implementation");
         if (owner == address(0)) revert ZeroAddressNotAllowed("owner");
 
-        __BaseAdapter_init(owner);
+        __BaseUpgradeable_init(owner);
 
         CoreAdapterStorage.Layout storage s = CoreAdapterStorage.layout();
         s.sedaProver = sedaProverAddress;

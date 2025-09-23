@@ -31,7 +31,7 @@ describe("FastProver", () => {
         upgrades.deployProxy(FastProver, [ethers.ZeroAddress], {
           initializer: "initialize",
         }),
-      ).to.be.revertedWithCustomError(FastProver, "OwnableInvalidOwner");
+      ).to.be.revertedWithCustomError(FastProver, "ZeroAddressNotAllowed");
     });
 
     it("Should revert when trying to initialize twice", async () => {
@@ -160,10 +160,7 @@ describe("FastProver", () => {
       // Valid signature
       const validSig = await trustedKey1.signingKey.sign(dataHash);
       const validSignature = ethers.Signature.from(validSig).serialized;
-      const attester = await fastProver.verifyData(
-        dataHash,
-        validSignature,
-      );
+      const attester = await fastProver.verifyData(dataHash, validSignature);
 
       expect(attester).to.equal(trustedKey1.address);
 

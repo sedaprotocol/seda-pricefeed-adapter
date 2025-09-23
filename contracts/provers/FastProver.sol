@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {BaseUpgradeable} from "../base/BaseUpgradeable.sol";
 import {FastProverStorage} from "../storage/FastProverStorage.sol";
 
 /// @title SedaFastProver
@@ -22,7 +19,7 @@ import {FastProverStorage} from "../storage/FastProverStorage.sol";
 ///                   validation of ECDSA signatures and administrative controls. The contract is pausable
 ///                   and only the owner can perform administrative functions.
 /// @custom:upgrades This contract uses UUPS upgrade pattern for upgradeability.
-contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, PausableUpgradeable {
+contract FastProver is BaseUpgradeable {
     using ECDSA for bytes32;
 
     // ============ Custom Errors ============
@@ -41,9 +38,6 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
     /// @notice Thrown when signature verification fails (signer not trusted)
     /// @param signer The address of the signer that failed verification
     error SignatureVerificationFailed(address signer);
-
-    /// @notice Thrown when attempting to initialize a contract that has already been initialized
-    error AlreadyInitialized();
 
     // ============ State Variables ============
 
@@ -67,22 +61,8 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
     /// @notice Initializes the contract with the initial owner
     /// @param initialOwner The address that will be the initial owner
     function initialize(address initialOwner) public initializer {
-        __Ownable_init(initialOwner);
-        __Pausable_init();
-        __UUPSUpgradeable_init();
+        __BaseUpgradeable_init(initialOwner);
     }
-
-    // ============ UUPS Upgrade Authorization ============
-
-    /// @notice Authorizes upgrades (only owner can upgrade)
-    /// @param newImplementation The address of the new implementation contract
-    function _authorizeUpgrade(
-        address newImplementation
-    )
-        internal
-        override
-        onlyOwner // solhint-disable-next-line no-empty-blocks
-    {}
 
     // ============ Trusted Key Management ============
 
@@ -143,18 +123,6 @@ contract FastProver is Initializable, OwnableUpgradeable, UUPSUpgradeable, Pausa
     /// @return True if the key is trusted, false otherwise
     function isTrustedKey(address key) external view returns (bool) {
         return FastProverStorage.layout().trustedKeys[key];
-    }
-
-    // ============ Pausable Functions ============
-
-    /// @notice Pauses the contract (only owner)
-    function pause() external onlyOwner {
-        _pause();
-    }
-
-    /// @notice Unpauses the contract (only owner)
-    function unpause() external onlyOwner {
-        _unpause();
     }
 
     // ============ Data Verification ============

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {BaseAdapter} from "./base/BaseAdapter.sol";
+import {BaseUpgradeable} from "./base/BaseUpgradeable.sol";
 import {BasePythAdapter} from "./base/BasePythAdapter.sol";
 import {FastProver} from "./provers/FastProver.sol";
 import {SedaDataTypes} from "@seda-protocol/evm/contracts/libraries/SedaDataTypes.sol";
@@ -19,7 +19,7 @@ import {FastAdapterStorage} from "./storage/FastAdapterStorage.sol";
 /// @custom:security Inherits BaseAdapter. Only the owner can perform admin actions.
 ///                  Oracle result validation is enforced.
 /// @custom:upgrades UUPS upgradeable, ERC-7201 storage layout (v1).
-contract FastAdapter is BaseAdapter, BasePythAdapter {
+contract FastAdapter is BaseUpgradeable, BasePythAdapter {
     /// @notice Struct containing the price feed ID and the price information.
     /// @dev WARNING: The `id` here is NOT the global asset ID under which the price is stored in this contract.
     /// The global asset ID is computed as keccak256(abi.encode(execProgramId, tallyProgramId, id)).
@@ -44,7 +44,7 @@ contract FastAdapter is BaseAdapter, BasePythAdapter {
         if (sedaProverAddress == address(0)) revert ZeroAddressNotAllowed("SEDA prover");
         if (owner == address(0)) revert ZeroAddressNotAllowed("owner");
 
-        __BaseAdapter_init(owner);
+        __BaseUpgradeable_init(owner);
 
         FastAdapterStorage.Layout storage s = FastAdapterStorage.layout();
         s.sedaProver = sedaProverAddress;

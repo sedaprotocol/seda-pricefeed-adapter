@@ -6,12 +6,12 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-/// @title BaseAdapter
+/// @title BaseUpgradeable
 /// @author Open Oracle Association
-/// @notice Base contract for price feed adapters with common admin functionality
-/// @dev Provides common upgradeable contract functionality without oracle-specific logic
+/// @notice Base contract for upgradeable contracts with common admin functionality
+/// @dev Provides common upgradeable contract functionality including ownership, pausing, and UUPS upgrades
 /// @custom:upgrades UUPS upgradeable
-abstract contract BaseAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable, PausableUpgradeable {
+abstract contract BaseUpgradeable is Initializable, OwnableUpgradeable, UUPSUpgradeable, PausableUpgradeable {
     // ============ Custom Errors ============
 
     /// @notice Thrown when a zero address is provided where a valid address is required
@@ -28,12 +28,20 @@ abstract contract BaseAdapter is Initializable, OwnableUpgradeable, UUPSUpgradea
 
     /// @notice Initializes the base contract with owner
     /// @param owner Address that will have administrative privileges
-    function __BaseAdapter_init(address owner) internal onlyInitializing {
+    function __BaseUpgradeable_init(address owner) internal onlyInitializing {
         // solhint-disable-previous-line func-name-mixedcase
         if (owner == address(0)) revert ZeroAddressNotAllowed("owner");
         __Ownable_init(owner);
         __UUPSUpgradeable_init();
         __Pausable_init();
+    }
+
+    /// @notice Internal initialization hook for BaseUpgradeable
+    /// @dev This function exists to satisfy OpenZeppelin upgrade validation
+    ///      and can be called from upgrade initializers
+    function __BaseUpgradeable_init_unchained() internal onlyInitializing {
+        // solhint-disable-previous-line func-name-mixedcase, no-empty-blocks
+        // no-op; exists to satisfy upgrade validator
     }
 
     // ============ External Functions ============
