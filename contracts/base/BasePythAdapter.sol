@@ -281,10 +281,10 @@ abstract contract BasePythAdapter is IPyth {
     /// @param checkUniqueness Whether to check uniqueness
     /// @param matchCounts The match counts
     /// @dev Irrelevant for our requested set or out of window — ignored.
-    /// @dev If uniqueness is requested, the *second* match must revert.
-    /// @dev Fill behavior:
-    /// - If uniqueness is ON, we only ever see the first match (2nd would revert), so set once.
-    /// - If uniqueness is OFF, we prefer the latest (overwrite if newer).
+    /// @dev Uniqueness behavior:
+    ///      - If uniqueness is ON, select the **earliest** matching update in the window;
+    ///        if multiple have the same timestamp, keep the first encountered. Never revert.
+    ///      - If uniqueness is OFF, prefer the **latest** matching update in the window.
     function _processPriceUpdate(
         bytes32 priceId,
         PythAdapterStorage.PriceInfo memory priceInfo,
@@ -305,26 +305,39 @@ abstract contract BasePythAdapter is IPyth {
             return;
         }
 
-        // Count matches for this requested id in the window.
+        // Count matches for this requested id in the window (kept for telemetry/compat).
         ++matchCounts[targetIndex];
 
-        // If uniqueness is requested, the *second* match must revert.
-        if (checkUniqueness && matchCounts[targetIndex] > 1) {
-            revert MultiplePriceUpdatesWithinRange(priceId);
-        }
+        // Existing candidate (if any)
+        bool hasCandidate = (priceFeeds[targetIndex].id != 0);
+        uint64 existingTime = hasCandidate ? uint64(priceFeeds[targetIndex].price.publishTime) : 0;
+        uint64 newTime = uint64(priceInfo.publishTime);
 
-        // Fill behavior:
-        // - If uniqueness is ON, we only ever see the first match (2nd would revert), so set once.
-        // - If uniqueness is OFF, we prefer the latest (overwrite if newer).
-        if (
-            priceFeeds[targetIndex].id == 0 ||
-            (!checkUniqueness && priceInfo.publishTime > priceFeeds[targetIndex].price.publishTime)
-        ) {
-            // Convert to Pyth PriceFeed using computed priceId
-            priceFeeds[targetIndex] = _convertToPriceFeed(priceId, priceInfo);
+        if (checkUniqueness) {
+            // Choose the earliest-in-window; if equal timestamp, keep the first one seen.
+            bool shouldReplace = !hasCandidate || (newTime < existingTime);
+            if (shouldReplace) {
+                // Convert to Pyth PriceFeed using computed priceId
+                priceFeeds[targetIndex] = _convertToPriceFeed(priceId, priceInfo);
 
-            if (updateStorage) {
-                _applyUpdate(priceId, priceInfo, /*strict=*/ true);
+                if (updateStorage) {
+                    // Parsing path should NOT revert on non-fresh data; only advance storage.
+                    _applyUpdate(priceId, priceInfo, /*strict=*/ false);
+                }
+            }
+            // If newTime == existingTime, keep the first encountered (no-op).
+        } else {
+            // Non-unique mode prefers the latest-in-window.
+            bool shouldReplace =
+                !hasCandidate || (newTime > existingTime);
+            if (shouldReplace) {
+                // Convert to Pyth PriceFeed using computed priceId
+                priceFeeds[targetIndex] = _convertToPriceFeed(priceId, priceInfo);
+
+                if (updateStorage) {
+                    // Advance storage only when newer; don't revert on equal/older.
+                    _applyUpdate(priceId, priceInfo, /*strict=*/ false);
+                }
             }
         }
     }

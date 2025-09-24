@@ -24,7 +24,7 @@ describe("FastAdapter", () => {
     const FastProver = await ethers.getContractFactory("FastProver");
     const fastProver = await upgrades.deployProxy(FastProver, [owner.address], {
       initializer: "initialize",
-    });
+    }) as unknown as FastProver;
 
     // Deploy FastAdapter
     const FastAdapter = await ethers.getContractFactory("FastAdapter");
@@ -591,7 +591,7 @@ describe("FastAdapter", () => {
       it("Should revert with NotImplemented", async () => {
         await expect(
           fastAdapter.getTwapUpdateFee([ethers.toUtf8Bytes("test")]),
-        ).to.be.revertedWithCustomError(fastAdapter, "NotImplemented");
+        ).to.be.revertedWithCustomError(fastAdapter, "TwapNotImplemented");
       });
     });
 
@@ -724,7 +724,7 @@ describe("FastAdapter", () => {
             [ethers.toUtf8Bytes("test")],
             [assetId],
           ),
-        ).to.be.revertedWithCustomError(fastAdapter, "NotImplemented");
+        ).to.be.revertedWithCustomError(fastAdapter, "TwapNotImplemented");
       });
     });
   });
