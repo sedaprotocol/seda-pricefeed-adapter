@@ -79,7 +79,7 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
         (FastStructs.ProgramConfig memory cfg, SedaPriceUpdate[] memory ups, ) = _verifyAndDecode(signedPayload);
         if (updateStorage) {
             for (uint256 i = 0; i < ups.length; ++i) {
-                _applyUpdate(_computePriceId(cfg, ups[i].rawId), ups[i].priceInfo, /*strict=*/ false);
+                _applyUpdate(_computePriceId(cfg, ups[i].rawId), ups[i].priceInfo);
             }
         }
     }
