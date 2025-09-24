@@ -13,12 +13,12 @@ import {PythAdapterStorage} from "../storage/PythAdapterStorage.sol";
 abstract contract BasePythAdapter is IPyth {
     // ============ Custom Errors ============
 
+    /// @notice Thrown when _verifyAndDecode fails during processing the result
+    /// @param reason Human-readable description of the validation failure
+    error InvalidResult(string reason);
+
     /// @notice Thrown if TWAP function is not implemented.
     error TwapNotImplemented();
-
-    /// @notice Thrown when result validation fails during processing
-    /// @param reason Human-readable description of the validation failure
-    error ValidationFailed(string reason);
 
     // ============ IPyth Implementation ============
 
@@ -58,23 +58,8 @@ abstract contract BasePythAdapter is IPyth {
     /// @param updateData Array of price update data.
     function updatePriceFeeds(bytes[] calldata updateData) external payable override {
         for (uint256 i = 0; i < updateData.length; ++i) {
-            // TODO: we could also pass the strict
             _processSignedPayload(updateData[i], true);
         }
-    }
-
-    /// @notice Get update fee
-    /// @return The update fee (always 0 for this implementation)
-    // solhint-disable-next-line use-natspec
-    function getUpdateFee(bytes[] calldata /* updateData */) external pure override returns (uint256) {
-        return 0;
-    }
-
-    /// @notice Get TWAP update fee
-    /// @return The update fee (function reverts - not implemented)
-    // solhint-disable-next-line use-natspec
-    function getTwapUpdateFee(bytes[] calldata /* updateData */) external pure override returns (uint256) {
-        revert TwapNotImplemented();
     }
 
     /// @notice Update price feeds if necessary
@@ -103,6 +88,35 @@ abstract contract BasePythAdapter is IPyth {
         for (uint256 i = 0; i < updateData.length; ++i) {
             _processSignedPayload(updateData[i], true);
         }
+    }
+
+    /// @notice Get update fee
+    /// @return The update fee (always 0 for this implementation)
+    // solhint-disable-next-line use-natspec
+    function getUpdateFee(bytes[] calldata /* updateData */) external pure override returns (uint256) {
+        return 0;
+    }
+
+    /// @notice Get TWAP update fee
+    /// @return The update fee (function reverts - TWAP is not implemented)
+    // solhint-disable-next-line use-natspec
+    function getTwapUpdateFee(bytes[] calldata /* updateData */) external pure override returns (uint256) {
+        revert TwapNotImplemented();
+    }
+
+    /// @notice Parse price feed updates
+    /// @param updateData The update data to parse
+    /// @param priceIds The price IDs to filter for
+    /// @param minPublishTime The minimum publish time
+    /// @param maxPublishTime The maximum publish time
+    /// @return priceFeeds Array of parsed price feeds
+    function parsePriceFeedUpdates(
+        bytes[] calldata updateData,
+        bytes32[] calldata priceIds,
+        uint64 minPublishTime,
+        uint64 maxPublishTime
+    ) external payable override returns (PythStructs.PriceFeed[] memory priceFeeds) {
+        return _parsePriceFeedUpdates(updateData, priceIds, minPublishTime, maxPublishTime, false, false, false);
     }
 
     /// @notice Parse price feed updates with configuration
@@ -136,21 +150,6 @@ abstract contract BasePythAdapter is IPyth {
         slots = new uint64[](priceIds.length); // SEDA doesn't use slots
     }
 
-    /// @notice Parse price feed updates
-    /// @param updateData The update data to parse
-    /// @param priceIds The price IDs to filter for
-    /// @param minPublishTime The minimum publish time
-    /// @param maxPublishTime The maximum publish time
-    /// @return priceFeeds Array of parsed price feeds
-    function parsePriceFeedUpdates(
-        bytes[] calldata updateData,
-        bytes32[] calldata priceIds,
-        uint64 minPublishTime,
-        uint64 maxPublishTime
-    ) external payable override returns (PythStructs.PriceFeed[] memory priceFeeds) {
-        return _parsePriceFeedUpdates(updateData, priceIds, minPublishTime, maxPublishTime, false, false, false);
-    }
-
     /// @notice Parse time-weighted average price (TWAP) from two consecutive price updates
     /// @return Array of TWAP price feeds (function reverts - not implemented)
     // solhint-disable-next-line use-natspec
@@ -175,6 +174,8 @@ abstract contract BasePythAdapter is IPyth {
     ) external payable override returns (PythStructs.PriceFeed[] memory priceFeeds) {
         return _parsePriceFeedUpdates(updateData, priceIds, minPublishTime, maxPublishTime, true, false, false);
     }
+
+    // ============ Public Functions ============
 
     /// @notice Retrieves all registered asset IDs
     /// @return Array of all asset IDs that have been created

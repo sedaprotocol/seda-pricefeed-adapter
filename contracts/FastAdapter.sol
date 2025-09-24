@@ -168,13 +168,13 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
         FastStructs.PriceUpdateBatch memory batch = abi.decode(payload.data, (FastStructs.PriceUpdateBatch));
 
         // Validate batch
-        if (batch.result.exitCode != 0) revert ValidationFailed("Oracle execution failed");
+        if (batch.result.exitCode != 0) revert InvalidResult("Oracle execution failed");
 
         programConfig = batch.programConfig;
         result = batch.result;
         updates = abi.decode(batch.result.result, (SedaPriceUpdate[]));
 
         // Validate updates after decoding
-        if (updates.length == 0) revert ValidationFailed("No price updates found in batch");
+        if (updates.length == 0) revert InvalidResult("No price updates found in batch");
     }
 }

@@ -301,7 +301,7 @@ describe("FastAdapter", () => {
 
         await expect(
           fastAdapter.updatePriceFeeds([signedPayload]),
-        ).to.be.revertedWithCustomError(fastAdapter, "ValidationFailed");
+        ).to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
       });
 
       it("Should revert with invalid exit code", async () => {
@@ -369,7 +369,7 @@ describe("FastAdapter", () => {
 
         await expect(
           fastAdapter.updatePriceFeeds([signedPayload]),
-        ).to.be.revertedWithCustomError(fastAdapter, "ValidationFailed");
+        ).to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
       });
 
       it("Should revert when paused", async () => {
@@ -439,7 +439,7 @@ describe("FastAdapter", () => {
 
         await expect(
           fastAdapter.updatePriceFeeds([invalidPayload]),
-        ).to.be.revertedWithCustomError(fastAdapter, "ValidationFailed");
+        ).to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
       });
 
       it("Should revert with ValidationFailed for empty batch", async () => {
@@ -454,7 +454,7 @@ describe("FastAdapter", () => {
 
         await expect(
           fastAdapter.updatePriceFeeds([emptyPayload]),
-        ).to.be.revertedWithCustomError(fastAdapter, "ValidationFailed");
+        ).to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
       });
     });
   });
