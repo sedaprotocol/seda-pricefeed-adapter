@@ -14,15 +14,17 @@ import {FastAdapterStorage} from "./storage/FastAdapterStorage.sol";
 /// @title FastAdapter
 /// @author Open Oracle Association
 /// @notice SEDA Price Feed Adapter implementing IPyth interface for managing SEDA oracle price feeds.
-/// @dev Contract for verifying oracle results and maintaining a registry of asset IDs. Uses ERC-7201 storage layout
-///      for upgrade safety and UUPS upgrade pattern. Pausable for emergencies.
-/// @custom:security Inherits BaseAdapter. Only the owner can perform admin actions.
-///                  Oracle result validation is enforced.
+/// @dev Verifies SEDA results and maintains a registry of price feeds using GLOBAL IDs derived from (exec,tally,rawId).
+///      Uses ERC-7201 namespaced storage and UUPS upgrade pattern. Pausable for emergencies.
+/// @custom:security Inherits BaseUpgradeable and BasePythAdapter. Only the owner can perform admin actions.
+///                  Oracle result validation is enforced via FastProver.
 /// @custom:upgrades UUPS upgradeable, ERC-7201 storage layout (v1).
 contract FastAdapter is BaseUpgradeable, BasePythAdapter {
-    /// @notice Struct containing the price feed ID and the price information.
-    /// @dev WARNING: The `id` here is NOT the global asset ID under which the price is stored in this contract.
-    /// The global asset ID is computed as keccak256(abi.encode(execProgramId, tallyProgramId, id)).
+    // ============ Structs ============
+
+    /// @notice Struct containing the raw Pyth feed ID and the decoded price information.
+    /// @dev WARNING: `rawId` is the Pyth feed ID. The GLOBAL asset ID used for storage in this contract
+    ///      is computed as keccak256(abi.encode(execProgramId, tallyProgramId, rawId)).
     struct SedaPriceUpdate {
         bytes32 rawId;
         PythAdapterStorage.PriceInfo priceInfo;
@@ -37,7 +39,7 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
 
     // ============ Initialization ============
 
-    /// @notice Initializes the PriceFeedAdapter with required contracts and configuration
+    /// @notice Initializes the FastAdapter with required contracts and configuration
     /// @param sedaProverAddress Address of the SEDA SECP256k1 prover contract for result verification
     /// @param owner Address that will have administrative privileges over the adapter
     function initialize(address sedaProverAddress, address owner) public initializer {
@@ -55,7 +57,7 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
     /// @notice Updates the SEDA prover contract address (owner only)
     /// @param newProver Address of the new SEDA prover contract
     function updateProver(address newProver) external onlyOwner onlyProxy {
-        if (newProver == address(0)) revert ZeroAddressNotAllowed("prover");
+        if (newProver == address(0)) revert ZeroAddressNotAllowed("SEDA prover");
         FastAdapterStorage.Layout storage s = FastAdapterStorage.layout();
         address oldProver = s.sedaProver;
         s.sedaProver = newProver;
@@ -72,60 +74,66 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
 
     // ============ BasePythAdapter Implementation ============
 
-    /// @notice Processes a signed payload with optional storage update
-    /// @param signedPayload The signed payload to process
-    /// @param updateStorage Whether to update storage or just parse
-    function _processSignedPayload(bytes calldata signedPayload, bool updateStorage) internal override whenNotPaused {
-        (FastStructs.ProgramConfig memory cfg, SedaPriceUpdate[] memory ups, ) = _verifyAndDecode(signedPayload);
-        if (updateStorage) {
-            for (uint256 i = 0; i < ups.length; ++i) {
-                _applyUpdate(_computePriceId(cfg, ups[i].rawId), ups[i].priceInfo);
-            }
+    /// @inheritdoc BasePythAdapter
+    function updatePriceFeeds(bytes[] calldata updateData) public payable override whenNotPaused {
+        super.updatePriceFeeds(updateData);
+    }
+
+    /// @inheritdoc BasePythAdapter
+    function updatePriceFeedsIfNecessary(
+        bytes[] calldata updateData,
+        bytes32[] calldata priceIds,
+        uint64[] calldata publishTimes
+    ) public payable override whenNotPaused {
+        super.updatePriceFeedsIfNecessary(updateData, priceIds, publishTimes);
+    }
+
+    /// @inheritdoc BasePythAdapter
+    function parsePriceFeedUpdatesWithConfig(
+        bytes[] calldata updateData,
+        bytes32[] calldata priceIds,
+        uint64 minAllowedPublishTime,
+        uint64 maxAllowedPublishTime,
+        bool checkUniqueness,
+        bool checkUpdateDataIsMinimal,
+        bool storeUpdatesIfFresh
+    ) public payable override returns (PythStructs.PriceFeed[] memory priceFeeds, uint64[] memory slots) {
+        // Block only when this call would mutate state
+        if (storeUpdatesIfFresh) {
+            if (paused()) revert EnforcedPause();
+        }
+        return
+            super.parsePriceFeedUpdatesWithConfig(
+                updateData,
+                priceIds,
+                minAllowedPublishTime,
+                maxAllowedPublishTime,
+                checkUniqueness,
+                checkUpdateDataIsMinimal,
+                storeUpdatesIfFresh
+            );
+    }
+
+    /// @notice Verifies + decodes a signed payload and returns GLOBAL price IDs with their decoded prices
+    /// @param updateData The update data (signed/encoded) to verify and decode
+    /// @return ids GLOBAL price IDs (already mapped from raw Pyth IDs)
+    /// @return infos Decoded price infos corresponding to each id
+    /// @dev Uses SEDA's FastProver to verify, decodes the batch, and maps rawId -> GLOBAL id via `_computePriceId`.
+    function _decodeUpdates(
+        bytes calldata updateData
+    ) internal view override returns (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos) {
+        (FastStructs.ProgramConfig memory cfg, SedaPriceUpdate[] memory ups, ) = _verifyAndDecode(updateData);
+
+        ids = new bytes32[](ups.length);
+        infos = new PythAdapterStorage.PriceInfo[](ups.length);
+
+        for (uint256 i = 0; i < ups.length; ++i) {
+            ids[i] = _computePriceId(cfg, ups[i].rawId); // GLOBAL ID = keccak(exec,tally,rawId)
+            infos[i] = ups[i].priceInfo; // decoded price fields
         }
     }
 
     // ============ SEDA-Specific Implementation ============
-
-    /// @notice Processes filtered update data for SEDA with validation and filtering
-    /// @param updateData The update data to process
-    /// @param priceIds The price IDs to process
-    /// @param minPublishTime The minimum publish time
-    /// @param maxPublishTime The maximum publish time
-    /// @param checkUniqueness Whether to check uniqueness
-    /// @param updateStorage Whether to update storage
-    /// @param priceFeeds The price feeds to update
-    /// @param matchCounts The match counts
-    /// @return The number of updates processed
-    function _processFilteredUpdates(
-        bytes calldata updateData,
-        bytes32[] calldata priceIds,
-        uint64 minPublishTime,
-        uint64 maxPublishTime,
-        bool checkUniqueness,
-        bool updateStorage,
-        PythStructs.PriceFeed[] memory priceFeeds,
-        uint256[] memory matchCounts
-    ) internal override returns (uint64) {
-        (FastStructs.ProgramConfig memory cfg, SedaPriceUpdate[] memory priceUpdates, ) = _verifyAndDecode(updateData);
-
-        for (uint256 i = 0; i < priceUpdates.length; ++i) {
-            bytes32 priceId = _computePriceId(cfg, priceUpdates[i].rawId);
-            _processPriceUpdate(
-                priceId,
-                priceUpdates[i].priceInfo,
-                priceIds,
-                minPublishTime,
-                maxPublishTime,
-                priceFeeds,
-                updateStorage,
-                checkUniqueness,
-                matchCounts
-            );
-        }
-
-        // Minimality counts *all* updates present in this blob (like Pyth's numUpdates)
-        return uint64(priceUpdates.length);
-    }
 
     /// @notice Computes the global price ID from SEDA program configuration and raw feed ID
     /// @dev CRITICAL: This function defines how SEDA price IDs are constructed and must remain consistent.
@@ -138,7 +146,7 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
     function _computePriceId(
         FastStructs.ProgramConfig memory programConfig,
         bytes32 rawId
-    ) internal pure returns (bytes32) {
+    ) private pure returns (bytes32) {
         return keccak256(abi.encode(programConfig.execProgramId, programConfig.tallyProgramId, rawId));
     }
 
@@ -150,7 +158,7 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
     function _verifyAndDecode(
         bytes calldata signedPayload
     )
-        internal
+        private
         view
         returns (
             FastStructs.ProgramConfig memory programConfig,

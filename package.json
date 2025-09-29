@@ -12,7 +12,7 @@
     "lint:sol": "solhint 'contracts/**/*.sol' --ignore-path .solhintignore --noPoster",
     "lint:sol:fix": "solhint 'contracts/**/*.sol' --fix --ignore-path .solhintignore --noPrompt --noPoster",
     "lint:ts": "bunx biome check .",
-    "lint:ts:fix": "bunx biome check --write .",
+    "lint:ts:fix": "bunx biome check --write --unsafe .",
     "test": "bunx hardhat test",
     "test:coverage": "COVERAGE=true hardhat coverage",
     "test:gas": "REPORT_GAS=true hardhat test"

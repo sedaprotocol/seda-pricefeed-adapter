@@ -56,7 +56,7 @@ abstract contract BasePythAdapter is IPyth {
     /// Implementors of `_processSignedPayload` SHOULD use `_applyUpdate(...)` when `updateStorage=true`
     /// to avoid reverting on stale data and match Pyth semantics.
     /// @param updateData Array of price update data.
-    function updatePriceFeeds(bytes[] calldata updateData) external payable override {
+    function updatePriceFeeds(bytes[] calldata updateData) public payable virtual override {
         for (uint256 i = 0; i < updateData.length; ++i) {
             _processSignedPayload(updateData[i], true);
         }
@@ -70,7 +70,7 @@ abstract contract BasePythAdapter is IPyth {
         bytes[] calldata updateData,
         bytes32[] calldata priceIds,
         uint64[] calldata publishTimes
-    ) external payable override {
+    ) public payable virtual override {
         if (priceIds.length != publishTimes.length) revert PythErrors.InvalidArgument();
 
         bool needsUpdate = false;
@@ -137,7 +137,7 @@ abstract contract BasePythAdapter is IPyth {
         bool checkUniqueness,
         bool checkUpdateDataIsMinimal,
         bool storeUpdatesIfFresh
-    ) external payable override returns (PythStructs.PriceFeed[] memory priceFeeds, uint64[] memory slots) {
+    ) public payable virtual override returns (PythStructs.PriceFeed[] memory priceFeeds, uint64[] memory slots) {
         priceFeeds = _parsePriceFeedUpdates(
             updateData,
             priceIds,
@@ -405,15 +405,20 @@ abstract contract BasePythAdapter is IPyth {
             });
     }
 
-    // ============ Abstract Functions ============
-
     /// @notice Processes a signed payload with optional storage update
     /// @param signedPayload The signed payload to process
     /// @param updateStorage Whether to update storage or just parse
-    /// @dev MUST verify proofs and decode all updates in the payload.
-    /// @dev When `updateStorage == true`, implementations SHOULD call `_applyUpdate(...)` so that
-    ///      stale payloads do not revert; only newer publish times advance storage, matching Pyth semantics.
-    function _processSignedPayload(bytes calldata signedPayload, bool updateStorage) internal virtual;
+    /// @dev This base implementation delegates to `_decodeUpdates` and applies updates when `updateStorage=true`.
+    /// Implementations MUST ensure `_decodeUpdates` verifies authenticity and returns GLOBAL price IDs.
+    /// Storage only advances for strictly newer publish times.
+    function _processSignedPayload(bytes calldata signedPayload, bool updateStorage) internal {
+        (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos) = _decodeUpdates(signedPayload);
+        if (updateStorage) {
+            for (uint256 i = 0; i < ids.length; ++i) {
+                _applyUpdate(ids[i], infos[i]); // advance-if-newer; never revert on stale
+            }
+        }
+    }
 
     /// @notice Processes filtered update data with validation and filtering
     /// @param updateData The update data to process
@@ -426,8 +431,8 @@ abstract contract BasePythAdapter is IPyth {
     /// @param matchCounts The match counts
     /// @return The number of updates present in `updateData` (COUNT **ALL** decoded updates in the blob,
     ///         not just those matched by `priceIds`). This enables the minimality check in `_parsePriceFeedUpdates`.
-    /// @dev This must be implemented by the specific oracle adapter. Implementations SHOULD call `_processPriceUpdate`
-    ///      for each decoded update so selection logic (earliest/latest) is applied consistently.
+    /// @dev Decodes and verifies the blob via `_decodeUpdates`, then applies the shared
+    ///      earliest/latest selection using `_processPriceUpdate` for each decoded item.
     function _processFilteredUpdates(
         bytes calldata updateData,
         bytes32[] calldata priceIds,
@@ -437,5 +442,37 @@ abstract contract BasePythAdapter is IPyth {
         bool updateStorage,
         PythStructs.PriceFeed[] memory priceFeeds,
         uint256[] memory matchCounts
-    ) internal virtual returns (uint64);
+    ) internal returns (uint64) {
+        (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos) = _decodeUpdates(updateData);
+
+        for (uint256 i = 0; i < ids.length; ++i) {
+            _processPriceUpdate(
+                ids[i],
+                infos[i],
+                priceIds,
+                minPublishTime,
+                maxPublishTime,
+                priceFeeds,
+                updateStorage,
+                checkUniqueness,
+                matchCounts
+            );
+        }
+
+        // Minimality counts *all* updates present in this blob
+        return uint64(ids.length);
+    }
+
+    // ============ Abstract Functions ============
+
+    /// @notice Verifies + decodes a signed payload and returns GLOBAL price IDs with their decoded prices
+    /// @param updateData The update data (signed/encoded) to verify and decode
+    /// @return ids GLOBAL price IDs (already mapped from any raw/oracle-specific IDs)
+    /// @return infos Decoded price infos corresponding to each id
+    /// @dev MUST verify authenticity (e.g., signatures/merkle proofs) and MUST map oracle-native IDs
+    ///      to GLOBAL IDs appropriate for this adapter (e.g., keccak(exec,tally,rawId) for SEDA).
+    /// @dev MUST return ALL decoded updates in the blob to support the minimality check.
+    function _decodeUpdates(
+        bytes calldata updateData
+    ) internal view virtual returns (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos);
 }
