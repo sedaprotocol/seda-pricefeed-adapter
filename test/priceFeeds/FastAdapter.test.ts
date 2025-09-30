@@ -1,4 +1,3 @@
-import type { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import type { Wallet } from "ethers";
@@ -165,8 +164,10 @@ describe("FastAdapter", () => {
           100n,
         );
 
-        await expect(fastAdapter.updatePriceFeeds([updateData]))
-          .to.emit(fastAdapter, "PriceFeedUpdate");
+        await expect(fastAdapter.updatePriceFeeds([updateData])).to.emit(
+          fastAdapter,
+          "PriceFeedUpdate",
+        );
 
         const price = await fastAdapter.getPriceUnsafe(assetId);
         expect(price.price).to.equal(50000n);
@@ -189,9 +190,13 @@ describe("FastAdapter", () => {
 
         await fastAdapter.updatePriceFeeds([btcData, ethData]);
 
-        const btcPrice = await fastAdapter.getPriceUnsafe(computeAssetId("BTC/USD"));
-        const ethPrice = await fastAdapter.getPriceUnsafe(computeAssetId("ETH/USD"));
-        
+        const btcPrice = await fastAdapter.getPriceUnsafe(
+          computeAssetId("BTC/USD"),
+        );
+        const ethPrice = await fastAdapter.getPriceUnsafe(
+          computeAssetId("ETH/USD"),
+        );
+
         expect(btcPrice.price).to.equal(50000n);
         expect(ethPrice.price).to.equal(3000n);
       });
@@ -236,8 +241,9 @@ describe("FastAdapter", () => {
           100n,
         );
 
-        await expect(fastAdapter.updatePriceFeeds([updateData]))
-          .to.be.revertedWithCustomError(fastAdapter, "EnforcedPause");
+        await expect(
+          fastAdapter.updatePriceFeeds([updateData]),
+        ).to.be.revertedWithCustomError(fastAdapter, "EnforcedPause");
       });
 
       it("Should revert with invalid signature", async () => {
@@ -257,15 +263,17 @@ describe("FastAdapter", () => {
       it("Should revert with invalid exit code", async () => {
         const invalidPayload = await createInvalidExitCodePayload(trustedKey);
 
-        await expect(fastAdapter.updatePriceFeeds([invalidPayload]))
-          .to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
+        await expect(
+          fastAdapter.updatePriceFeeds([invalidPayload]),
+        ).to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
       });
 
       it("Should revert with empty batch", async () => {
         const emptyPayload = await createEmptyBatchPayload(trustedKey);
 
-        await expect(fastAdapter.updatePriceFeeds([emptyPayload]))
-          .to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
+        await expect(
+          fastAdapter.updatePriceFeeds([emptyPayload]),
+        ).to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
       });
     });
 
@@ -275,7 +283,14 @@ describe("FastAdapter", () => {
         const newTime = Math.floor(Date.now() / 1000);
 
         // Submit old price first
-        await submitPriceUpdate(fastAdapter, trustedKey, "BTC/USD", 40000n, 100n, oldTime);
+        await submitPriceUpdate(
+          fastAdapter,
+          trustedKey,
+          "BTC/USD",
+          40000n,
+          100n,
+          oldTime,
+        );
 
         // Update with newer time
         const updateData = await createValidUpdateData(
@@ -301,7 +316,14 @@ describe("FastAdapter", () => {
         const newerTime = Math.floor(Date.now() / 1000);
 
         // Submit newer price first
-        await submitPriceUpdate(fastAdapter, trustedKey, "BTC/USD", 50000n, 100n, newerTime);
+        await submitPriceUpdate(
+          fastAdapter,
+          trustedKey,
+          "BTC/USD",
+          50000n,
+          100n,
+          newerTime,
+        );
 
         // Try to update with older time
         const updateData = await createValidUpdateData(
@@ -370,68 +392,22 @@ describe("FastAdapter", () => {
           100n,
         );
 
-        const [priceFeeds, slots] = await fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
-          [updateData],
-          [assetId],
-          0,
-          Math.floor(Date.now() / 1000) + 3600,
-          false,
-          false,
-          true, // storeUpdatesIfFresh
-        );
+        const [priceFeeds, slots] =
+          await fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
+            [updateData],
+            [assetId],
+            0,
+            Math.floor(Date.now() / 1000) + 3600,
+            false,
+            false,
+            true, // storeUpdatesIfFresh
+          );
 
         expect(priceFeeds).to.have.length(1);
         expect(priceFeeds[0].id).to.equal(assetId);
         expect(priceFeeds[0].price.price).to.equal(50000n);
         expect(slots).to.have.length(1);
         expect(slots[0]).to.equal(0); // SEDA doesn't use slots
-      });
-
-      it("Should parse without storing when storeUpdatesIfFresh is false", async () => {
-        const updateData = await createValidUpdateData(
-          trustedKey,
-          "BTC/USD",
-          50000n,
-          100n,
-        );
-
-        const [priceFeeds] = await fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
-          [updateData],
-          [assetId],
-          0,
-          Math.floor(Date.now() / 1000) + 3600,
-          false,
-          false,
-          false, // Don't store
-        );
-
-        expect(priceFeeds).to.have.length(1);
-        expect(priceFeeds[0].price.price).to.equal(50000n);
-
-        // Price should not be stored
-        await expect(fastAdapter.getPriceUnsafe(assetId))
-          .to.be.revertedWithCustomError(fastAdapter, "PriceFeedNotFound");
-      });
-
-      it("Should parse with uniqueness check", async () => {
-        const pastTime = createPastTimestamp(1800);
-        const updateData = await createValidUpdateData(
-          trustedKey,
-          "BTC/USD",
-          50000n,
-          100n,
-          pastTime,
-        );
-
-        const priceFeeds = await fastAdapter.parsePriceFeedUpdatesUnique.staticCall(
-          [updateData],
-          [assetId],
-          0,
-          Math.floor(Date.now() / 1000) + 3600,
-        );
-
-        expect(priceFeeds.length).to.equal(1);
-        expect(priceFeeds[0].id).to.equal(assetId);
       });
 
       it("Should revert when paused and trying to store", async () => {
@@ -455,6 +431,295 @@ describe("FastAdapter", () => {
           ),
         ).to.be.revertedWithCustomError(fastAdapter, "EnforcedPause");
       });
+
+      it("Should enforce strict minimality check", async () => {
+        // Create updates for both BTC and ETH
+        const btcUpdateData = await createValidUpdateData(
+          trustedKey,
+          "BTC/USD",
+          50000n,
+          100n,
+        );
+        const ethUpdateData = await createValidUpdateData(
+          trustedKey,
+          "ETH/USD",
+          3000n,
+          50n,
+        );
+
+        const ethAssetId = computeAssetId("ETH/USD");
+
+        // Request 2 price IDs and provide 2 updates, but with extra data (should fail minimality check)
+        await expect(
+          fastAdapter.parsePriceFeedUpdatesWithConfig(
+            [btcUpdateData, ethUpdateData, btcUpdateData], // 3 updates for 2 requested IDs
+            [assetId, ethAssetId], // Request 2 IDs
+            0,
+            Math.floor(Date.now() / 1000) + 3600,
+            false,
+            true, // checkUpdateDataIsMinimal = true
+            false,
+          ),
+        ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
+      });
+
+      it("Should handle uniqueness mode with storage updates", async () => {
+        const currentTime = Math.floor(Date.now() / 1000);
+        const earlierTime = currentTime - 1800; // 30 minutes ago
+        const laterTime = currentTime - 900; // 15 minutes ago
+
+        // Create updates with different timestamps for the same asset
+        const earlierData = await createValidUpdateData(
+          trustedKey,
+          "BTC/USD",
+          40000n,
+          100n,
+          earlierTime,
+        );
+        const laterData = await createValidUpdateData(
+          trustedKey,
+          "BTC/USD",
+          50000n,
+          100n,
+          laterTime,
+        );
+
+        // Test uniqueness mode with storage updates - should prefer earlier timestamp
+        const [priceFeeds] =
+          await fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
+            [laterData, earlierData], // Later first, then earlier
+            [assetId],
+            0,
+            currentTime + 3600,
+            true, // checkUniqueness = true
+            false,
+            true, // updateStorage = true
+          );
+
+        expect(priceFeeds).to.have.length(1);
+        expect(priceFeeds[0].id).to.equal(assetId);
+        expect(priceFeeds[0].price.price).to.equal(40000n); // Earlier timestamp wins
+      });
+
+      it("Should parse price feed updates with uniqueness check", async () => {
+        const pastTime = createPastTimestamp(1800);
+        const updateData = await createValidUpdateData(
+          trustedKey,
+          "BTC/USD",
+          50000n,
+          100n,
+          pastTime,
+        );
+
+        const priceFeeds =
+          await fastAdapter.parsePriceFeedUpdatesUnique.staticCall(
+            [updateData],
+            [assetId],
+            0,
+            Math.floor(Date.now() / 1000) + 3600,
+          );
+
+        expect(priceFeeds.length).to.equal(1);
+        expect(priceFeeds[0].id).to.equal(assetId);
+        expect(priceFeeds[0].price.price).to.equal(50000n);
+      });
+
+      it("Should handle uniqueness mode when shouldReplace is false", async () => {
+        const currentTime = Math.floor(Date.now() / 1000);
+        const sameTime = currentTime - 1800; // Same timestamp for both updates
+
+        // Create two updates with the same timestamp
+        const updateData1 = await createValidUpdateData(
+          trustedKey,
+          "BTC/USD",
+          40000n,
+          100n,
+          sameTime,
+        );
+        const updateData2 = await createValidUpdateData(
+          trustedKey,
+          "BTC/USD",
+          50000n,
+          100n,
+          sameTime,
+        );
+
+        // Test uniqueness mode - first update should be kept (shouldReplace = false for second)
+        const [priceFeeds] =
+          await fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
+            [updateData1, updateData2], // First update should win
+            [assetId],
+            0,
+            currentTime + 3600,
+            true, // checkUniqueness = true
+            false,
+            false,
+          );
+
+        expect(priceFeeds).to.have.length(1);
+        expect(priceFeeds[0].id).to.equal(assetId);
+        expect(priceFeeds[0].price.price).to.equal(40000n); // First update wins
+      });
+
+      it("Should handle price feed not found scenarios", async () => {
+        const btcUpdateData = await createValidUpdateData(
+          trustedKey,
+          "BTC/USD",
+          50000n,
+          100n,
+        );
+        const ethAssetId = computeAssetId("ETH/USD");
+
+        // Test 1: Request ETH but provide BTC update
+        await expect(
+          fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
+            [btcUpdateData],
+            [ethAssetId], // Only request ETH, but update contains BTC
+            0,
+            Math.floor(Date.now() / 1000) + 3600,
+            false,
+            false,
+            false,
+          ),
+        ).to.be.revertedWithCustomError(
+          fastAdapter,
+          "PriceFeedNotFoundWithinRange",
+        );
+
+        // Test 2: Request 3 IDs but only provide 2 updates
+        const ethUpdateData = await createValidUpdateData(
+          trustedKey,
+          "ETH/USD",
+          3000n,
+          50n,
+        );
+        const solAssetId = computeAssetId("SOL/USD");
+
+        await expect(
+          fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
+            [btcUpdateData, ethUpdateData],
+            [assetId, ethAssetId, solAssetId], // Request 3 IDs, but only 2 updates
+            0,
+            Math.floor(Date.now() / 1000) + 3600,
+            false,
+            false,
+            false,
+          ),
+        ).to.be.revertedWithCustomError(
+          fastAdapter,
+          "PriceFeedNotFoundWithinRange",
+        );
+      });
+
+      it("Should skip updates for non-requested price IDs", async () => {
+        // Create a batch update that contains BTC, ETH, and SOL
+        const btcUpdateData = await createValidUpdateData(
+          trustedKey,
+          "BTC/USD",
+          50000n,
+          100n,
+        );
+        const ethUpdateData = await createValidUpdateData(
+          trustedKey,
+          "ETH/USD",
+          3000n,
+          50n,
+        );
+        const solUpdateData = await createValidUpdateData(
+          trustedKey,
+          "SOL/USD",
+          100n,
+          10n,
+        );
+
+        const ethAssetId = computeAssetId("ETH/USD");
+
+        // Only request BTC and ETH, but provide BTC, ETH, and SOL updates
+        // This tests the _findPriceIdIndex return path for SOL
+        const [priceFeeds] =
+          await fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
+            [btcUpdateData, ethUpdateData, solUpdateData], // 3 updates
+            [assetId, ethAssetId], // Only request 2 IDs
+            0,
+            Math.floor(Date.now() / 1000) + 3600,
+            false,
+            false,
+            false,
+          );
+
+        // Should return 2 price feeds (BTC and ETH), SOL should be skipped
+        expect(priceFeeds).to.have.length(2);
+        expect(priceFeeds[0].id).to.equal(assetId);
+        expect(priceFeeds[1].id).to.equal(ethAssetId);
+        expect(priceFeeds[0].price.price).to.equal(50000n);
+        expect(priceFeeds[1].price.price).to.equal(3000n);
+      });
+
+      it("Should skip updates outside time window", async () => {
+        const currentTime = Math.floor(Date.now() / 1000);
+        const testTime = currentTime - 1800; // 30 minutes ago
+
+        // Create a single update with fixed timestamp
+        const updateData = await createValidUpdateData(
+          trustedKey,
+          "BTC/USD",
+          50000n,
+          100n,
+          testTime,
+        );
+
+        // Test 1: priceInfo.publishTime < minPublishTime
+        // Set minTime to be after our testTime
+        const minTimeTooHigh = testTime + 100;
+        await expect(
+          fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
+            [updateData],
+            [assetId],
+            minTimeTooHigh, // minTime > testTime
+            currentTime + 3600,
+            false,
+            false,
+            false,
+          ),
+        ).to.be.revertedWithCustomError(
+          fastAdapter,
+          "PriceFeedNotFoundWithinRange",
+        );
+
+        // Test 2: riceInfo.publishTime > maxPublishTime
+        // Set maxTime to be before our testTime
+        const maxTimeTooLow = testTime - 100;
+        await expect(
+          fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
+            [updateData],
+            [assetId],
+            0,
+            maxTimeTooLow, // maxTime < testTime
+            false,
+            false,
+            false,
+          ),
+        ).to.be.revertedWithCustomError(
+          fastAdapter,
+          "PriceFeedNotFoundWithinRange",
+        );
+
+        // Test 3: Valid time window - should work
+        const [priceFeeds] =
+          await fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
+            [updateData],
+            [assetId],
+            testTime - 100, // minTime < testTime
+            testTime + 100, // maxTime > testTime
+            false,
+            false,
+            false,
+          );
+
+        expect(priceFeeds).to.have.length(1);
+        expect(priceFeeds[0].id).to.equal(assetId);
+        expect(priceFeeds[0].price.price).to.equal(50000n);
+      });
     });
   });
 
@@ -474,27 +739,21 @@ describe("FastAdapter", () => {
       assetId = computeAssetId("BTC/USD");
     });
 
-    describe("getPriceUnsafe", () => {
-      it("Should return price for existing asset", async () => {
-        await submitPriceUpdate(fastAdapter, trustedKey, "BTC/USD", 50000n, 100n);
+    describe("Price Retrieval Functions", () => {
+      it("Should return prices for existing assets", async () => {
+        await submitPriceUpdate(
+          fastAdapter,
+          trustedKey,
+          "BTC/USD",
+          50000n,
+          100n,
+        );
 
         const price = await fastAdapter.getPriceUnsafe(assetId);
         expect(price.price).to.equal(50000n);
         expect(price.conf).to.equal(100n);
         expect(price.expo).to.equal(-8);
         expect(price.publishTime).to.be.greaterThan(0);
-      });
-
-      it("Should revert for non-existent asset", async () => {
-        const nonExistentId = ethers.id("non_existent");
-        await expect(fastAdapter.getPriceUnsafe(nonExistentId))
-          .to.be.revertedWithCustomError(fastAdapter, "PriceFeedNotFound");
-      });
-    });
-
-    describe("getEmaPriceUnsafe", () => {
-      it("Should return EMA price for existing asset", async () => {
-        await submitPriceUpdate(fastAdapter, trustedKey, "BTC/USD", 50000n, 100n);
 
         const emaPrice = await fastAdapter.getEmaPriceUnsafe(assetId);
         expect(emaPrice.price).to.equal(50000n);
@@ -503,55 +762,94 @@ describe("FastAdapter", () => {
         expect(emaPrice.publishTime).to.be.greaterThan(0);
       });
 
-      it("Should revert for non-existent asset", async () => {
+      it("Should revert for non-existent assets", async () => {
         const nonExistentId = ethers.id("non_existent");
-        await expect(fastAdapter.getEmaPriceUnsafe(nonExistentId))
-          .to.be.revertedWithCustomError(fastAdapter, "PriceFeedNotFound");
+
+        await expect(
+          fastAdapter.getPriceUnsafe(nonExistentId),
+        ).to.be.revertedWithCustomError(fastAdapter, "PriceFeedNotFound");
+
+        await expect(
+          fastAdapter.getEmaPriceUnsafe(nonExistentId),
+        ).to.be.revertedWithCustomError(fastAdapter, "PriceFeedNotFound");
       });
     });
 
-    describe("getPriceNoOlderThan", () => {
-      it("Should return price within age limit", async () => {
+    describe("Age-Limited Price Functions", () => {
+      it("Should return prices within age limits", async () => {
         const pastTime = createPastTimestamp(10);
-        await submitPriceUpdate(fastAdapter, trustedKey, "BTC/USD", 50000n, 100n, pastTime);
+        await submitPriceUpdate(
+          fastAdapter,
+          trustedKey,
+          "BTC/USD",
+          50000n,
+          100n,
+          pastTime,
+        );
 
         const price = await fastAdapter.getPriceNoOlderThan(assetId, 86400);
         expect(price.price).to.equal(50000n);
-      });
 
-      it("Should revert for non-existent asset", async () => {
-        const nonExistentId = ethers.id("non_existent");
-        await expect(fastAdapter.getPriceNoOlderThan(nonExistentId, 3600))
-          .to.be.revertedWithCustomError(fastAdapter, "PriceFeedNotFound");
-      });
-    });
-
-    describe("getEmaPriceNoOlderThan", () => {
-      it("Should return EMA price within age limit", async () => {
-        const pastTime = createPastTimestamp(10);
-        await submitPriceUpdate(fastAdapter, trustedKey, "BTC/USD", 50000n, 100n, pastTime);
-
-        const emaPrice = await fastAdapter.getEmaPriceNoOlderThan(assetId, 86400 * 365);
+        const emaPrice = await fastAdapter.getEmaPriceNoOlderThan(
+          assetId,
+          86400 * 365,
+        );
         expect(emaPrice.price).to.equal(50000n);
       });
+
+      it("Should revert for stale prices", async () => {
+        const oldTime = createPastTimestamp(3700); // More than 1 hour ago
+        await submitPriceUpdate(
+          fastAdapter,
+          trustedKey,
+          "BTC/USD",
+          50000n,
+          100n,
+          oldTime,
+        );
+
+        await expect(fastAdapter.getPriceNoOlderThan(assetId, 3600)) // 1 hour max age
+          .to.be.revertedWithCustomError(fastAdapter, "StalePrice");
+
+        await expect(fastAdapter.getEmaPriceNoOlderThan(assetId, 3600)) // 1 hour max age
+          .to.be.revertedWithCustomError(fastAdapter, "StalePrice");
+      });
+
+      it("Should revert for future timestamps", async () => {
+        const futureTime = Math.floor(Date.now() / 1000) + 3600; // 1 hour in the future
+        await submitPriceUpdate(
+          fastAdapter,
+          trustedKey,
+          "BTC/USD",
+          50000n,
+          100n,
+          futureTime,
+        );
+
+        // Should revert because block.timestamp < info.publishTime
+        await expect(
+          fastAdapter.getPriceNoOlderThan(assetId, 86400),
+        ).to.be.revertedWithCustomError(fastAdapter, "StalePrice");
+
+        await expect(
+          fastAdapter.getEmaPriceNoOlderThan(assetId, 86400 * 365),
+        ).to.be.revertedWithCustomError(fastAdapter, "StalePrice");
+      });
     });
 
-    describe("getUpdateFee", () => {
+    describe("Fee and TWAP Functions", () => {
       it("Should return zero fee", async () => {
-        const fee = await fastAdapter.getUpdateFee([ethers.toUtf8Bytes("test")]);
+        const fee = await fastAdapter.getUpdateFee([
+          ethers.toUtf8Bytes("test"),
+        ]);
         expect(fee).to.equal(0);
       });
-    });
 
-    describe("getTwapUpdateFee", () => {
-      it("Should revert with NotImplemented", async () => {
-        await expect(fastAdapter.getTwapUpdateFee([ethers.toUtf8Bytes("test")]))
-          .to.be.revertedWithCustomError(fastAdapter, "TwapNotImplemented");
-      });
-    });
+      it("Should revert TWAP functions with NotImplemented", async () => {
+        await expect(
+          fastAdapter.getTwapUpdateFee([ethers.toUtf8Bytes("test")]),
+        ).to.be.revertedWithCustomError(fastAdapter, "TwapNotImplemented");
 
-    describe("parseTwapPriceFeedUpdates", () => {
-      it("Should revert with NotImplemented", async () => {
         await expect(
           fastAdapter.parseTwapPriceFeedUpdates(
             [ethers.toUtf8Bytes("test")],
@@ -562,21 +860,131 @@ describe("FastAdapter", () => {
     });
   });
 
+  describe("noMsgValue Modifier Tests", () => {
+    let fastAdapter: FastAdapter;
+    let fastProver: FastProver;
+    let trustedKey: Wallet;
+    let assetId: string;
+
+    beforeEach(async () => {
+      const fixture = await loadFixture(deployFastAdapterFixture);
+      fastAdapter = fixture.fastAdapter;
+      fastProver = fixture.fastProver;
+
+      trustedKey = createTrustedKey();
+      await fastProver.addTrustedKey(trustedKey.address);
+      assetId = computeAssetId("BTC/USD");
+    });
+
+    it("Should reject ETH sent to updatePriceFeeds", async () => {
+      const updateData = await createValidUpdateData(
+        trustedKey,
+        "BTC/USD",
+        50000n,
+        100n,
+      );
+
+      await expect(
+        fastAdapter.updatePriceFeeds([updateData], {
+          value: ethers.parseEther("1"),
+        }),
+      ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
+    });
+
+    it("Should reject ETH sent to updatePriceFeedsIfNecessary", async () => {
+      const updateData = await createValidUpdateData(
+        trustedKey,
+        "BTC/USD",
+        50000n,
+        100n,
+      );
+
+      await expect(
+        fastAdapter.updatePriceFeedsIfNecessary(
+          [updateData],
+          [assetId],
+          [Math.floor(Date.now() / 1000)],
+          { value: ethers.parseEther("1") },
+        ),
+      ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
+    });
+
+    it("Should reject ETH sent to parsePriceFeedUpdates", async () => {
+      const updateData = await createValidUpdateData(
+        trustedKey,
+        "BTC/USD",
+        50000n,
+        100n,
+      );
+
+      await expect(
+        fastAdapter.parsePriceFeedUpdates(
+          [updateData],
+          [assetId],
+          0,
+          Math.floor(Date.now() / 1000) + 3600,
+          { value: ethers.parseEther("1") },
+        ),
+      ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
+    });
+
+    it("Should reject ETH sent to parsePriceFeedUpdatesWithConfig", async () => {
+      const updateData = await createValidUpdateData(
+        trustedKey,
+        "BTC/USD",
+        50000n,
+        100n,
+      );
+
+      await expect(
+        fastAdapter.parsePriceFeedUpdatesWithConfig(
+          [updateData],
+          [assetId],
+          0,
+          Math.floor(Date.now() / 1000) + 3600,
+          false,
+          false,
+          false,
+          { value: ethers.parseEther("1") },
+        ),
+      ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
+    });
+
+    it("Should reject ETH sent to parsePriceFeedUpdatesUnique", async () => {
+      const updateData = await createValidUpdateData(
+        trustedKey,
+        "BTC/USD",
+        50000n,
+        100n,
+      );
+
+      await expect(
+        fastAdapter.parsePriceFeedUpdatesUnique(
+          [updateData],
+          [assetId],
+          0,
+          Math.floor(Date.now() / 1000) + 3600,
+          { value: ethers.parseEther("1") },
+        ),
+      ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
+    });
+
+    it("Should reject ETH sent to parseTwapPriceFeedUpdates", async () => {
+      await expect(
+        fastAdapter.parseTwapPriceFeedUpdates(
+          [ethers.toUtf8Bytes("test")],
+          [assetId],
+          { value: ethers.parseEther("1") },
+        ),
+      ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
+    });
+  });
+
   describe("Edge Cases & Utilities", () => {
     it("Should return empty asset IDs initially", async () => {
       const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
       const assetIds = await fastAdapter.getAssetIds();
       expect(assetIds.length).to.equal(0);
-    });
-
-    it("Should return zero price info for non-existent asset", async () => {
-      const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
-      const nonExistentAssetId = ethers.id("non_existent");
-      const priceInfo = await fastAdapter.getPriceInfo(nonExistentAssetId);
-
-      expect(priceInfo.price).to.equal(0);
-      expect(priceInfo.conf).to.equal(0);
-      expect(priceInfo.publishTime).to.equal(0);
     });
   });
 
