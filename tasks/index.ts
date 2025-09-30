@@ -1,5 +1,5 @@
 import "./deploy";
-import "./mock-prices";
+import "./mock-submit";
 import "./pause";
 import "./prices";
 import "./status";

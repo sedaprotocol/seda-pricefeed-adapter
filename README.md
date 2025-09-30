@@ -136,15 +136,6 @@ bun run lint:sol:fix
 bun run lint:ts:fix
 ```
 
-### Mock Price Updates
-
-For testing purposes, you can submit mock price updates:
-
-```bash
-# Submit mock prices for testing
-bunx hardhat seda:mock-prices [--network networkName]
-```
-
 ## ⚙️ Configuration
 
 ### SEDA Parameters
