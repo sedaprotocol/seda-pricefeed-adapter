@@ -67,7 +67,7 @@ abstract contract BasePythAdapter is IPyth {
     /// @param updateData Array of price update data.
     function updatePriceFeeds(bytes[] calldata updateData) public payable virtual override noMsgValue {
         for (uint256 i = 0; i < updateData.length; ++i) {
-            _processSignedPayload(updateData[i], true);
+            _processSignedPayload(updateData[i]);
         }
     }
 
@@ -95,7 +95,7 @@ abstract contract BasePythAdapter is IPyth {
         if (!needsUpdate) revert PythErrors.NoFreshUpdate();
 
         for (uint256 i = 0; i < updateData.length; ++i) {
-            _processSignedPayload(updateData[i], true);
+            _processSignedPayload(updateData[i]);
         }
     }
 
@@ -224,10 +224,9 @@ abstract contract BasePythAdapter is IPyth {
         if (info.publishTime == 0) revert PythErrors.PriceFeedNotFound();
 
         // Age validation (only if age > 0)
-        if (age > 0) {
-            // solhint-disable-next-line not-rely-on-time
-            if (block.timestamp < info.publishTime || block.timestamp - info.publishTime > age)
-                revert PythErrors.StalePrice();
+        // solhint-disable-next-line not-rely-on-time
+        if (age > 0 && (block.timestamp < info.publishTime || block.timestamp - info.publishTime > age)) {
+            revert PythErrors.StalePrice();
         }
 
         // Return EMA or regular price based on useEma flag
@@ -415,16 +414,13 @@ abstract contract BasePythAdapter is IPyth {
 
     /// @notice Processes a signed payload with optional storage update
     /// @param signedPayload The signed payload to process
-    /// @param updateStorage Whether to update storage or just parse
     /// @dev This base implementation delegates to `_decodeUpdates` and applies updates when `updateStorage=true`.
     /// Implementations MUST ensure `_decodeUpdates` verifies authenticity and returns GLOBAL price IDs.
     /// Storage only advances for strictly newer publish times.
-    function _processSignedPayload(bytes calldata signedPayload, bool updateStorage) private {
+    function _processSignedPayload(bytes calldata signedPayload) private {
         (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos) = _decodeUpdates(signedPayload);
-        if (updateStorage) {
-            for (uint256 i = 0; i < ids.length; ++i) {
-                _applyUpdate(ids[i], infos[i]); // advance-if-newer; never revert on stale
-            }
+        for (uint256 i = 0; i < ids.length; ++i) {
+            _applyUpdate(ids[i], infos[i]);
         }
     }
 
