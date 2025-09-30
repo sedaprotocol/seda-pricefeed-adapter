@@ -1121,6 +1121,29 @@ describe("CoreAdapter", () => {
         "InvalidInitialization",
       );
     });
+
+    it("Should cover onlyInitializing else branch via CoreAdapterV2Test", async () => {
+      const { priceFeedAdapter, owner } = await loadFixture(
+        deployCoreAdapterFixture,
+      );
+
+      // Create a special V2 test contract that has a function to call __BaseUpgradeable_init
+      const CoreAdapterV2 = await ethers.getContractFactory("CoreAdapterV2");
+
+      // Upgrade to V2
+      const upgradedContract = await upgrades.upgradeProxy(
+        priceFeedAdapter,
+        CoreAdapterV2,
+        {
+          call: { fn: "initializeV2", args: [] },
+        },
+      );
+
+      // Call testBaseInit, which calls __BaseUpgradeable_init
+      await expect(
+        upgradedContract.testBaseInit(owner.address),
+      ).to.be.revertedWithCustomError(priceFeedAdapter, "NotInitializing");
+    });
   });
 
   describe("onlyProxy Modifier", () => {

@@ -16,11 +16,16 @@ contract CoreAdapterV2 is CoreAdapter {
         super.initialize(sedaProverAddress, priceFeedImplementation, owner, _priceFeedConfig);
     }
 
-    // Upgrade-only initializer for NEW V2 state (optional if you add new vars)
+    // NOTE: No '@custom:oz-upgrades-validate-as-initializer' on purpose.
+    // This is an upgrade-only reinitializer for NEW V2 state; it does not call parent initializers.
     function initializeV2() external reinitializer(2) {
         // Initialize ONLY new state introduced in V2.
         // Do NOT touch v1 state or call v1 initializers again.
         // If you added new base contracts that require init, call their *_init() here.
+    }
+
+    function testBaseInit(address owner) external {
+        __BaseUpgradeable_init(owner);
     }
 
     function version() public pure returns (uint256) {

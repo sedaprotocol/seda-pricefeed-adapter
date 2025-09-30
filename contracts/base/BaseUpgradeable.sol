@@ -36,13 +36,9 @@ abstract contract BaseUpgradeable is Initializable, OwnableUpgradeable, UUPSUpgr
         __Pausable_init();
     }
 
-    /// @notice Internal initialization hook for BaseUpgradeable
-    /// @dev This function exists to satisfy OpenZeppelin upgrade validation
-    ///      and can be called from upgrade initializers
-    function __BaseUpgradeable_init_unchained() internal onlyInitializing {
-        // solhint-disable-previous-line func-name-mixedcase, no-empty-blocks
-        // no-op; exists to satisfy upgrade validator
-    }
+    // function __BaseUpgradeable_init_unchained(address owner) internal onlyInitializing {
+    //     // no-op
+    // }
 
     // ============ External Functions ============
 
