@@ -20,6 +20,15 @@ abstract contract BasePythAdapter is IPyth {
     /// @notice Thrown if TWAP function is not implemented.
     error TwapNotImplemented();
 
+    // ============ Modifiers ============
+
+    /// @notice Rejects accidental ETH sent to payable endpoints
+    /// @dev This implementation never charges fees
+    modifier noMsgValue() {
+        if (msg.value != 0) revert PythErrors.InvalidArgument();
+        _;
+    }
+
     // ============ IPyth Implementation ============
 
     /// @inheritdoc IPyth
@@ -56,7 +65,7 @@ abstract contract BasePythAdapter is IPyth {
     /// Implementors of `_processSignedPayload` SHOULD use `_applyUpdate(...)` when `updateStorage=true`
     /// to avoid reverting on stale data and match Pyth semantics.
     /// @param updateData Array of price update data.
-    function updatePriceFeeds(bytes[] calldata updateData) public payable virtual override {
+    function updatePriceFeeds(bytes[] calldata updateData) public payable virtual override noMsgValue {
         for (uint256 i = 0; i < updateData.length; ++i) {
             _processSignedPayload(updateData[i], true);
         }
@@ -70,7 +79,7 @@ abstract contract BasePythAdapter is IPyth {
         bytes[] calldata updateData,
         bytes32[] calldata priceIds,
         uint64[] calldata publishTimes
-    ) public payable virtual override {
+    ) public payable virtual override noMsgValue {
         if (priceIds.length != publishTimes.length) revert PythErrors.InvalidArgument();
 
         bool needsUpdate = false;
@@ -107,28 +116,29 @@ abstract contract BasePythAdapter is IPyth {
     /// @notice Parse price feed updates
     /// @param updateData The update data to parse
     /// @param priceIds The price IDs to filter for
-    /// @param minPublishTime The minimum publish time
-    /// @param maxPublishTime The maximum publish time
+    /// @param minPublishTime The minimum publish time (inclusive)
+    /// @param maxPublishTime The maximum publish time (inclusive)
     /// @return priceFeeds Array of parsed price feeds
     function parsePriceFeedUpdates(
         bytes[] calldata updateData,
         bytes32[] calldata priceIds,
         uint64 minPublishTime,
         uint64 maxPublishTime
-    ) external payable override returns (PythStructs.PriceFeed[] memory priceFeeds) {
+    ) external payable override noMsgValue returns (PythStructs.PriceFeed[] memory priceFeeds) {
         return _parsePriceFeedUpdates(updateData, priceIds, minPublishTime, maxPublishTime, false, false, false);
     }
 
     /// @notice Parse price feed updates with configuration
     /// @param updateData The update data to parse
     /// @param priceIds The price IDs to filter for
-    /// @param minAllowedPublishTime The minimum allowed publish time
-    /// @param maxAllowedPublishTime The maximum allowed publish time
-    /// @param checkUniqueness Whether to check uniqueness
-    /// @param checkUpdateDataIsMinimal Whether to check update data is minimal
-    /// @param storeUpdatesIfFresh Whether to store updates if fresh
+    /// @param minAllowedPublishTime The minimum allowed publish time (inclusive)
+    /// @param maxAllowedPublishTime The maximum allowed publish time (inclusive)
+    /// @param checkUniqueness Whether to enforce uniqueness semantics
+    /// @param checkUpdateDataIsMinimal If true, decoded updates across all blobs must be exactly one per requested id
+    ///                                 and contain no unrelated extras (strict minimality parity with Pyth).
+    /// @param storeUpdatesIfFresh If true, storage is updated (only if strictly newer); otherwise parse-only.
     /// @return priceFeeds Array of parsed price feeds
-    /// @return slots Array of slots
+    /// @return slots Array of slots (SEDA does not use slots; returned as zeroes with the same length as priceIds)
     function parsePriceFeedUpdatesWithConfig(
         bytes[] calldata updateData,
         bytes32[] calldata priceIds,
@@ -137,7 +147,14 @@ abstract contract BasePythAdapter is IPyth {
         bool checkUniqueness,
         bool checkUpdateDataIsMinimal,
         bool storeUpdatesIfFresh
-    ) public payable virtual override returns (PythStructs.PriceFeed[] memory priceFeeds, uint64[] memory slots) {
+    )
+        public
+        payable
+        virtual
+        override
+        noMsgValue
+        returns (PythStructs.PriceFeed[] memory priceFeeds, uint64[] memory slots)
+    {
         priceFeeds = _parsePriceFeedUpdates(
             updateData,
             priceIds,
@@ -147,7 +164,8 @@ abstract contract BasePythAdapter is IPyth {
             checkUpdateDataIsMinimal,
             storeUpdatesIfFresh
         );
-        slots = new uint64[](priceIds.length); // SEDA doesn't use slots
+        // Per Pyth interface, return a slots array; SEDA does not use it, so return zeroes.
+        slots = new uint64[](priceIds.length);
     }
 
     /// @notice Parse time-weighted average price (TWAP) from two consecutive price updates
@@ -156,22 +174,22 @@ abstract contract BasePythAdapter is IPyth {
     function parseTwapPriceFeedUpdates(
         bytes[] calldata /* updateData */,
         bytes32[] calldata /* priceIds */
-    ) external payable override returns (PythStructs.TwapPriceFeed[] memory) {
+    ) external payable override noMsgValue returns (PythStructs.TwapPriceFeed[] memory) {
         revert TwapNotImplemented();
     }
 
     /// @notice Parses price feed updates with uniqueness check
     /// @param updateData The update data to parse
     /// @param priceIds The price IDs to filter for
-    /// @param minPublishTime The minimum publish time
-    /// @param maxPublishTime The maximum publish time
+    /// @param minPublishTime The minimum publish time (inclusive)
+    /// @param maxPublishTime The maximum publish time (inclusive)
     /// @return priceFeeds Array of parsed price feeds
     function parsePriceFeedUpdatesUnique(
         bytes[] calldata updateData,
         bytes32[] calldata priceIds,
         uint64 minPublishTime,
         uint64 maxPublishTime
-    ) external payable override returns (PythStructs.PriceFeed[] memory priceFeeds) {
+    ) external payable override noMsgValue returns (PythStructs.PriceFeed[] memory priceFeeds) {
         return _parsePriceFeedUpdates(updateData, priceIds, minPublishTime, maxPublishTime, true, false, false);
     }
 
@@ -226,7 +244,7 @@ abstract contract BasePythAdapter is IPyth {
     /// @param minPublishTime Minimum publish time filter (inclusive)
     /// @param maxPublishTime Maximum publish time filter (inclusive)
     /// @param checkUniqueness Whether to enforce uniqueness
-    /// @param checkUpdateDataIsMinimal Whether to enforce minimal update data
+    /// @param checkUpdateDataIsMinimal Whether to enforce strict minimality (see above)
     /// @param updateStorage Whether to update storage
     /// @return priceFeeds Array of parsed price feeds
     function _parsePriceFeedUpdates(
@@ -240,9 +258,7 @@ abstract contract BasePythAdapter is IPyth {
     ) internal returns (PythStructs.PriceFeed[] memory priceFeeds) {
         priceFeeds = new PythStructs.PriceFeed[](priceIds.length);
 
-        // Per-id match counters (for tracking how many updates matched each requested priceId)
-        uint256[] memory matchCounts = new uint256[](priceIds.length);
-        // Total updates count across blobs (for minimality)
+        // Total updates count across blobs (for strict minimality)
         uint64 totalUpdatesAcrossBlobs = 0;
 
         for (uint256 i = 0; i < updateData.length; ++i) {
@@ -253,17 +269,16 @@ abstract contract BasePythAdapter is IPyth {
                 maxPublishTime,
                 checkUniqueness,
                 updateStorage,
-                priceFeeds,
-                matchCounts
+                priceFeeds
             );
         }
 
-        // Ensure every requested feed had >= 1 match
+        // Ensure every requested feed had >= 1 match within the time window
         for (uint256 k = 0; k < priceIds.length; ++k) {
             if (priceFeeds[k].id == 0) revert PythErrors.PriceFeedNotFoundWithinRange();
         }
 
-        // Minimality: total updates must equal #requested feeds (exactly)
+        // Strict minimality: total decoded updates across blobs must equal the # of requested feeds
         if (checkUpdateDataIsMinimal && totalUpdatesAcrossBlobs != priceIds.length) {
             revert PythErrors.InvalidArgument();
         }
@@ -278,7 +293,6 @@ abstract contract BasePythAdapter is IPyth {
     /// @param priceFeeds The price feeds to update
     /// @param updateStorage Whether to update storage
     /// @param checkUniqueness Whether to check uniqueness
-    /// @param matchCounts The match counts
     /// @dev Irrelevant for our requested set or out of window — ignored.
     /// @dev Uniqueness behavior:
     ///      - If uniqueness is ON, select the **earliest** matching update in the window;
@@ -292,21 +306,14 @@ abstract contract BasePythAdapter is IPyth {
         uint64 maxPublishTime,
         PythStructs.PriceFeed[] memory priceFeeds,
         bool updateStorage,
-        bool checkUniqueness,
-        uint256[] memory matchCounts
+        bool checkUniqueness
     ) internal {
         uint256 targetIndex = _findPriceIdIndex(priceIds, priceId);
-        bool requested = (targetIndex < priceIds.length);
-        // Use explicit inclusive bounds for clarity
-        bool inRange = (priceInfo.publishTime >= minPublishTime && priceInfo.publishTime <= maxPublishTime);
 
-        if (!requested || !inRange) {
-            // Irrelevant for our requested set or out of window — ignored.
-            return;
-        }
-
-        // Count matches for this requested id in the window (kept for telemetry/compat).
-        ++matchCounts[targetIndex];
+        // Skip if priceId is not in the requested set or outside of the allowed window.
+        if (!(targetIndex < priceIds.length)) return;
+        if (priceInfo.publishTime < minPublishTime) return;
+        if (priceInfo.publishTime > maxPublishTime) return;
 
         // Existing candidate (if any)
         bool hasCandidate = (priceFeeds[targetIndex].id != 0);
@@ -348,7 +355,8 @@ abstract contract BasePythAdapter is IPyth {
         PythAdapterStorage.Layout storage s = PythAdapterStorage.layout();
         PythAdapterStorage.PriceInfo storage current = s.priceInfos[priceId];
 
-        if (newInfo.publishTime <= current.publishTime) return;
+        // Skip if the new price is older than the current price.
+        if (!(newInfo.publishTime > current.publishTime)) return;
 
         // If this is a new price feed, add to assetIds before updating
         if (current.publishTime == 0) {
@@ -371,7 +379,7 @@ abstract contract BasePythAdapter is IPyth {
     /// @notice Finds the index of a price ID in the requested array
     /// @param priceIds The price IDs to search in
     /// @param targetId The target price ID to find
-    /// @return The index of the target price ID
+    /// @return The index of the target price ID (or priceIds.length if not found)
     function _findPriceIdIndex(bytes32[] memory priceIds, bytes32 targetId) private pure returns (uint256) {
         for (uint256 i = 0; i < priceIds.length; ++i) {
             if (priceIds[i] == targetId) return i;
@@ -411,7 +419,7 @@ abstract contract BasePythAdapter is IPyth {
     /// @dev This base implementation delegates to `_decodeUpdates` and applies updates when `updateStorage=true`.
     /// Implementations MUST ensure `_decodeUpdates` verifies authenticity and returns GLOBAL price IDs.
     /// Storage only advances for strictly newer publish times.
-    function _processSignedPayload(bytes calldata signedPayload, bool updateStorage) internal {
+    function _processSignedPayload(bytes calldata signedPayload, bool updateStorage) private {
         (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos) = _decodeUpdates(signedPayload);
         if (updateStorage) {
             for (uint256 i = 0; i < ids.length; ++i) {
@@ -428,7 +436,6 @@ abstract contract BasePythAdapter is IPyth {
     /// @param checkUniqueness Whether to check uniqueness
     /// @param updateStorage Whether to update storage
     /// @param priceFeeds The price feeds to update
-    /// @param matchCounts The match counts
     /// @return The number of updates present in `updateData` (COUNT **ALL** decoded updates in the blob,
     ///         not just those matched by `priceIds`). This enables the minimality check in `_parsePriceFeedUpdates`.
     /// @dev Decodes and verifies the blob via `_decodeUpdates`, then applies the shared
@@ -440,9 +447,8 @@ abstract contract BasePythAdapter is IPyth {
         uint64 maxPublishTime,
         bool checkUniqueness,
         bool updateStorage,
-        PythStructs.PriceFeed[] memory priceFeeds,
-        uint256[] memory matchCounts
-    ) internal returns (uint64) {
+        PythStructs.PriceFeed[] memory priceFeeds
+    ) private returns (uint64) {
         (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos) = _decodeUpdates(updateData);
 
         for (uint256 i = 0; i < ids.length; ++i) {
@@ -454,8 +460,7 @@ abstract contract BasePythAdapter is IPyth {
                 maxPublishTime,
                 priceFeeds,
                 updateStorage,
-                checkUniqueness,
-                matchCounts
+                checkUniqueness
             );
         }
 
@@ -471,7 +476,7 @@ abstract contract BasePythAdapter is IPyth {
     /// @return infos Decoded price infos corresponding to each id
     /// @dev MUST verify authenticity (e.g., signatures/merkle proofs) and MUST map oracle-native IDs
     ///      to GLOBAL IDs appropriate for this adapter (e.g., keccak(exec,tally,rawId) for SEDA).
-    /// @dev MUST return ALL decoded updates in the blob to support the minimality check.
+    /// @dev MUST return ALL decoded updates in the blob to support the strict minimality check (when enabled).
     function _decodeUpdates(
         bytes calldata updateData
     ) internal view virtual returns (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos);

@@ -22,9 +22,13 @@ describe("FastAdapter", () => {
 
     // Deploy FastProver contract
     const FastProver = await ethers.getContractFactory("FastProver");
-    const fastProver = await upgrades.deployProxy(FastProver, [owner.address], {
-      initializer: "initialize",
-    }) as unknown as FastProver;
+    const fastProver = (await upgrades.deployProxy(
+      FastProver,
+      [owner.address],
+      {
+        initializer: "initialize",
+      },
+    )) as unknown as FastProver;
 
     // Deploy FastAdapter
     const FastAdapter = await ethers.getContractFactory("FastAdapter");

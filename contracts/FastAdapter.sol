@@ -153,7 +153,7 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
     /// @notice Verifies a SignedPayload and decodes it into (ProgramConfig, PriceUpdate[], Result)
     /// @param signedPayload The signed payload to verify and decode
     /// @return programConfig The program configuration
-    /// @return updates The price updates array
+    /// @return updates The price updates array (may contain multiple price updates for a single result)
     /// @return result The SEDA result
     function _verifyAndDecode(
         bytes calldata signedPayload
@@ -168,14 +168,15 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
     {
         FastStructs.SignedPayload memory payload = abi.decode(signedPayload, (FastStructs.SignedPayload));
 
-        // Validate signature
+        // Validate signature (FastProver may be paused via its own guard)
         bytes32 dataHash = keccak256(payload.data);
         FastProver(getProver()).verifyData(dataHash, payload.signature);
 
         // Decode the verified data
         FastStructs.PriceUpdateBatch memory batch = abi.decode(payload.data, (FastStructs.PriceUpdateBatch));
 
-        // Validate batch
+        // Validate batch outcome:
+        // - exitCode == 0 implies consensus & successful tally execution
         if (batch.result.exitCode != 0) revert InvalidResult("Oracle execution failed");
 
         programConfig = batch.programConfig;
