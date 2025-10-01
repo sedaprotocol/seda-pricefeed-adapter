@@ -52,8 +52,8 @@ describe("CoreAdapter", () => {
     };
   }
 
-  describe("Constructor", () => {
-    it("Should revert with zero prover address", async () => {
+  describe("Initialization", () => {
+    it("Should revert when initializing with zero prover address", async () => {
       const [owner] = await ethers.getSigners();
       const PriceFeed = await ethers.getContractFactory("PriceFeed");
       const sedaPriceFeed = await PriceFeed.deploy();
@@ -85,7 +85,7 @@ describe("CoreAdapter", () => {
         .withArgs("SEDA prover");
     });
 
-    it("Should revert with zero implementation address", async () => {
+    it("Should revert when initializing with zero implementation address", async () => {
       const [owner] = await ethers.getSigners();
       const MockSedaProver = await ethers.getContractFactory("MockSedaProver");
       const mockProver = await MockSedaProver.deploy();
@@ -257,7 +257,7 @@ describe("CoreAdapter", () => {
       }
     });
 
-    it("Should revert with invalid merkle proof", async () => {
+    it("Should revert when merkle proof is invalid", async () => {
       const { priceFeedAdapter, mockProver } = await loadFixture(
         deployCoreAdapterFixture,
       );
@@ -276,7 +276,7 @@ describe("CoreAdapter", () => {
         .withArgs("Invalid Merkle proof");
     });
 
-    it("Should revert with invalid consensus", async () => {
+    it("Should revert when consensus is invalid", async () => {
       const { priceFeedAdapter, mockProver } = await loadFixture(
         deployCoreAdapterFixture,
       );
@@ -295,7 +295,7 @@ describe("CoreAdapter", () => {
         .withArgs("Invalid consensus or exit code");
     });
 
-    it("Should revert with invalid exit code", async () => {
+    it("Should revert when exit code is invalid", async () => {
       const { priceFeedAdapter, mockProver } = await loadFixture(
         deployCoreAdapterFixture,
       );
@@ -314,7 +314,7 @@ describe("CoreAdapter", () => {
         .withArgs("Invalid consensus or exit code");
     });
 
-    it("Should revert with invalid DR ID", async () => {
+    it("Should revert when DR ID is invalid", async () => {
       const { priceFeedAdapter, mockProver } = await loadFixture(
         deployCoreAdapterFixture,
       );
@@ -336,7 +336,7 @@ describe("CoreAdapter", () => {
         .withArgs("Invalid DR ID");
     });
 
-    it("Should revert if invariant of equal length of symbols and prices is violated", async () => {
+    it("Should revert when symbols and prices length mismatch", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
         deployCoreAdapterFixture,
       );
@@ -367,7 +367,7 @@ describe("CoreAdapter", () => {
         .withArgs("Mismatched tickers and prices");
     });
 
-    it("Should revert with empty tickers", async () => {
+    it("Should revert when tickers array is empty", async () => {
       const { priceFeedAdapter, mockProver, owner } = await loadFixture(
         deployCoreAdapterFixture,
       );

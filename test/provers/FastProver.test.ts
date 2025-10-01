@@ -25,7 +25,7 @@ describe("FastProver", () => {
       expect(await fastProver.version()).to.equal(1);
     });
 
-    it("Should revert when initializing with zero address", async () => {
+    it("Should revert when initializing with zero owner address", async () => {
       const FastProver = await ethers.getContractFactory("FastProver");
       await expect(
         upgrades.deployProxy(FastProver, [ethers.ZeroAddress], {
@@ -34,7 +34,7 @@ describe("FastProver", () => {
       ).to.be.revertedWithCustomError(FastProver, "ZeroAddressNotAllowed");
     });
 
-    it("Should revert when trying to initialize twice", async () => {
+    it("Should revert when initializing twice", async () => {
       const { fastProver, user } = await loadFixture(deployFastProverFixture);
 
       await expect(
@@ -43,107 +43,114 @@ describe("FastProver", () => {
     });
   });
 
-  describe("Trusted Key Management", () => {
-    it("Should add and remove trusted keys", async () => {
-      const { fastProver, owner, trustedKey1, trustedKey2 } = await loadFixture(
-        deployFastProverFixture,
-      );
+  describe("Access Control", () => {
+    describe("Trusted Key Management", () => {
+      it("Should add and remove trusted keys", async () => {
+        const { fastProver, owner, trustedKey1, trustedKey2 } =
+          await loadFixture(deployFastProverFixture);
 
-      // Add keys
-      await expect(fastProver.addTrustedKey(trustedKey1.address))
-        .to.emit(fastProver, "TrustedKeyAdded")
-        .withArgs(trustedKey1.address, owner.address);
+        // Add keys
+        await expect(fastProver.addTrustedKey(trustedKey1.address))
+          .to.emit(fastProver, "TrustedKeyAdded")
+          .withArgs(trustedKey1.address, owner.address);
 
-      await fastProver.addTrustedKey(trustedKey2.address);
+        await fastProver.addTrustedKey(trustedKey2.address);
 
-      expect(await fastProver.getTrustedKeysCount()).to.equal(2);
-      expect(await fastProver.isTrustedKey(trustedKey1.address)).to.be.true;
+        expect(await fastProver.getTrustedKeysCount()).to.equal(2);
+        expect(await fastProver.isTrustedKey(trustedKey1.address)).to.be.true;
 
-      // Remove key
-      await expect(fastProver.removeTrustedKey(trustedKey2.address))
-        .to.emit(fastProver, "TrustedKeyRemoved")
-        .withArgs(trustedKey2.address, owner.address);
+        // Remove key
+        await expect(fastProver.removeTrustedKey(trustedKey2.address))
+          .to.emit(fastProver, "TrustedKeyRemoved")
+          .withArgs(trustedKey2.address, owner.address);
 
-      expect(await fastProver.getTrustedKeysCount()).to.equal(1);
-      expect(await fastProver.isTrustedKey(trustedKey2.address)).to.be.false;
-    });
+        expect(await fastProver.getTrustedKeysCount()).to.equal(1);
+        expect(await fastProver.isTrustedKey(trustedKey2.address)).to.be.false;
+      });
 
-    it("Should revert when adding duplicate or zero address", async () => {
-      const { fastProver, trustedKey1 } = await loadFixture(
-        deployFastProverFixture,
-      );
+      it("Should revert when adding duplicate or zero address", async () => {
+        const { fastProver, trustedKey1 } = await loadFixture(
+          deployFastProverFixture,
+        );
 
-      await fastProver.addTrustedKey(trustedKey1.address);
+        await fastProver.addTrustedKey(trustedKey1.address);
 
-      await expect(
-        fastProver.addTrustedKey(trustedKey1.address),
-      ).to.be.revertedWithCustomError(fastProver, "DuplicateTrustedKey");
+        await expect(
+          fastProver.addTrustedKey(trustedKey1.address),
+        ).to.be.revertedWithCustomError(fastProver, "DuplicateTrustedKey");
 
-      await expect(
-        fastProver.addTrustedKey(ethers.ZeroAddress),
-      ).to.be.revertedWithCustomError(fastProver, "InvalidKeyAddress");
-    });
+        await expect(
+          fastProver.addTrustedKey(ethers.ZeroAddress),
+        ).to.be.revertedWithCustomError(fastProver, "InvalidKeyAddress");
+      });
 
-    it("Should revert when non-owner tries to manage keys", async () => {
-      const { fastProver, user, trustedKey1 } = await loadFixture(
-        deployFastProverFixture,
-      );
+      it("Should revert when non-owner tries to manage keys", async () => {
+        const { fastProver, user, trustedKey1 } = await loadFixture(
+          deployFastProverFixture,
+        );
 
-      await expect(
-        fastProver.connect(user).addTrustedKey(trustedKey1.address),
-      ).to.be.revertedWithCustomError(fastProver, "OwnableUnauthorizedAccount");
-    });
+        await expect(
+          fastProver.connect(user).addTrustedKey(trustedKey1.address),
+        ).to.be.revertedWithCustomError(
+          fastProver,
+          "OwnableUnauthorizedAccount",
+        );
+      });
 
-    it("Should revert when non-owner tries to remove keys", async () => {
-      const { fastProver, user, trustedKey1 } = await loadFixture(
-        deployFastProverFixture,
-      );
+      it("Should revert when non-owner tries to remove keys", async () => {
+        const { fastProver, user, trustedKey1 } = await loadFixture(
+          deployFastProverFixture,
+        );
 
-      // First add the key as owner
-      await fastProver.addTrustedKey(trustedKey1.address);
+        // First add the key as owner
+        await fastProver.addTrustedKey(trustedKey1.address);
 
-      // Then try to remove it as non-owner
-      await expect(
-        fastProver.connect(user).removeTrustedKey(trustedKey1.address),
-      ).to.be.revertedWithCustomError(fastProver, "OwnableUnauthorizedAccount");
-    });
+        // Then try to remove it as non-owner
+        await expect(
+          fastProver.connect(user).removeTrustedKey(trustedKey1.address),
+        ).to.be.revertedWithCustomError(
+          fastProver,
+          "OwnableUnauthorizedAccount",
+        );
+      });
 
-    it("Should revert when trying to remove non-existent trusted key", async () => {
-      const { fastProver, trustedKey1 } = await loadFixture(
-        deployFastProverFixture,
-      );
+      it("Should revert when removing non-existent trusted key", async () => {
+        const { fastProver, trustedKey1 } = await loadFixture(
+          deployFastProverFixture,
+        );
 
-      // Try to remove a key that was never added
-      await expect(
-        fastProver.removeTrustedKey(trustedKey1.address),
-      ).to.be.revertedWithCustomError(fastProver, "TrustedKeyNotFound");
-    });
+        // Try to remove a key that was never added
+        await expect(
+          fastProver.removeTrustedKey(trustedKey1.address),
+        ).to.be.revertedWithCustomError(fastProver, "TrustedKeyNotFound");
+      });
 
-    it("Should get all trusted keys", async () => {
-      const { fastProver, trustedKey1, trustedKey2 } = await loadFixture(
-        deployFastProverFixture,
-      );
+      it("Should get all trusted keys", async () => {
+        const { fastProver, trustedKey1, trustedKey2 } = await loadFixture(
+          deployFastProverFixture,
+        );
 
-      // Initially no trusted keys
-      expect(await fastProver.getAllTrustedKeys()).to.deep.equal([]);
+        // Initially no trusted keys
+        expect(await fastProver.getAllTrustedKeys()).to.deep.equal([]);
 
-      // Add first key
-      await fastProver.addTrustedKey(trustedKey1.address);
-      const keysAfterFirst = await fastProver.getAllTrustedKeys();
-      expect(keysAfterFirst).to.deep.equal([trustedKey1.address]);
+        // Add first key
+        await fastProver.addTrustedKey(trustedKey1.address);
+        const keysAfterFirst = await fastProver.getAllTrustedKeys();
+        expect(keysAfterFirst).to.deep.equal([trustedKey1.address]);
 
-      // Add second key
-      await fastProver.addTrustedKey(trustedKey2.address);
-      const keysAfterSecond = await fastProver.getAllTrustedKeys();
-      expect(keysAfterSecond).to.deep.equal([
-        trustedKey1.address,
-        trustedKey2.address,
-      ]);
+        // Add second key
+        await fastProver.addTrustedKey(trustedKey2.address);
+        const keysAfterSecond = await fastProver.getAllTrustedKeys();
+        expect(keysAfterSecond).to.deep.equal([
+          trustedKey1.address,
+          trustedKey2.address,
+        ]);
 
-      // Remove first key
-      await fastProver.removeTrustedKey(trustedKey1.address);
-      const keysAfterRemoval = await fastProver.getAllTrustedKeys();
-      expect(keysAfterRemoval).to.deep.equal([trustedKey2.address]);
+        // Remove first key
+        await fastProver.removeTrustedKey(trustedKey1.address);
+        const keysAfterRemoval = await fastProver.getAllTrustedKeys();
+        expect(keysAfterRemoval).to.deep.equal([trustedKey2.address]);
+      });
     });
   });
 
@@ -176,7 +183,7 @@ describe("FastProver", () => {
       );
     });
 
-    it("Should handle invalid signature format", async () => {
+    it("Should revert when signature format is invalid", async () => {
       const { fastProver, trustedKey1 } = await loadFixture(
         deployFastProverFixture,
       );
@@ -193,78 +200,88 @@ describe("FastProver", () => {
     });
   });
 
-  describe("Pausable Functions", () => {
-    it("Should allow owner to pause/unpause", async () => {
-      const { fastProver, owner } = await loadFixture(deployFastProverFixture);
+  describe("Access Control", () => {
+    describe("Pausable Functions", () => {
+      it("Should allow owner to pause/unpause", async () => {
+        const { fastProver, owner } = await loadFixture(
+          deployFastProverFixture,
+        );
 
-      await expect(fastProver.pause())
-        .to.emit(fastProver, "Paused")
-        .withArgs(owner.address);
+        await expect(fastProver.pause())
+          .to.emit(fastProver, "Paused")
+          .withArgs(owner.address);
 
-      await expect(fastProver.unpause())
-        .to.emit(fastProver, "Unpaused")
-        .withArgs(owner.address);
-    });
+        await expect(fastProver.unpause())
+          .to.emit(fastProver, "Unpaused")
+          .withArgs(owner.address);
+      });
 
-    it("Should revert when non-owner tries to pause", async () => {
-      const { fastProver, user } = await loadFixture(deployFastProverFixture);
+      it("Should revert when non-owner tries to pause", async () => {
+        const { fastProver, user } = await loadFixture(deployFastProverFixture);
 
-      await expect(
-        fastProver.connect(user).pause(),
-      ).to.be.revertedWithCustomError(fastProver, "OwnableUnauthorizedAccount");
-    });
+        await expect(
+          fastProver.connect(user).pause(),
+        ).to.be.revertedWithCustomError(
+          fastProver,
+          "OwnableUnauthorizedAccount",
+        );
+      });
 
-    it("Should revert when non-owner tries to unpause", async () => {
-      const { fastProver, user } = await loadFixture(deployFastProverFixture);
+      it("Should revert when non-owner tries to unpause", async () => {
+        const { fastProver, user } = await loadFixture(deployFastProverFixture);
 
-      // First pause as owner
-      await fastProver.pause();
+        // First pause as owner
+        await fastProver.pause();
 
-      // Then try to unpause as non-owner
-      await expect(
-        fastProver.connect(user).unpause(),
-      ).to.be.revertedWithCustomError(fastProver, "OwnableUnauthorizedAccount");
-    });
+        // Then try to unpause as non-owner
+        await expect(
+          fastProver.connect(user).unpause(),
+        ).to.be.revertedWithCustomError(
+          fastProver,
+          "OwnableUnauthorizedAccount",
+        );
+      });
 
-    it("Should allow key management when paused", async () => {
-      const { fastProver, trustedKey1, trustedKey2 } = await loadFixture(
-        deployFastProverFixture,
-      );
+      it("Should allow key management when paused", async () => {
+        const { fastProver, trustedKey1, trustedKey2 } = await loadFixture(
+          deployFastProverFixture,
+        );
 
-      // Add a key first
-      await fastProver.addTrustedKey(trustedKey1.address);
+        // Add a key first
+        await fastProver.addTrustedKey(trustedKey1.address);
 
-      // Pause the contract
-      await fastProver.pause();
+        // Pause the contract
+        await fastProver.pause();
 
-      // Should still be able to add/remove keys when paused
-      await expect(fastProver.addTrustedKey(trustedKey2.address))
-        .to.emit(fastProver, "TrustedKeyAdded")
-        .withArgs(trustedKey2.address, await fastProver.owner());
+        // Should still be able to add/remove keys when paused
+        await expect(fastProver.addTrustedKey(trustedKey2.address))
+          .to.emit(fastProver, "TrustedKeyAdded")
+          .withArgs(trustedKey2.address, await fastProver.owner());
 
-      await expect(fastProver.removeTrustedKey(trustedKey1.address))
-        .to.emit(fastProver, "TrustedKeyRemoved")
-        .withArgs(trustedKey1.address, await fastProver.owner());
+        await expect(fastProver.removeTrustedKey(trustedKey1.address))
+          .to.emit(fastProver, "TrustedKeyRemoved")
+          .withArgs(trustedKey1.address, await fastProver.owner());
 
-      expect(await fastProver.getTrustedKeysCount()).to.equal(1);
-      expect(await fastProver.isTrustedKey(trustedKey2.address)).to.be.true;
-    });
+        expect(await fastProver.getTrustedKeysCount()).to.equal(1);
+        expect(await fastProver.isTrustedKey(trustedKey2.address)).to.be.true;
+      });
 
-    it("Should revert verifyData when paused", async () => {
-      const { fastProver, trustedKey1 } = await loadFixture(
-        deployFastProverFixture,
-      );
+      it("Should revert verifyData when paused", async () => {
+        const { fastProver, trustedKey1 } = await loadFixture(
+          deployFastProverFixture,
+        );
 
-      await fastProver.addTrustedKey(trustedKey1.address);
-      await fastProver.pause();
+        await fastProver.addTrustedKey(trustedKey1.address);
+        await fastProver.pause();
 
-      const dataHash = ethers.keccak256(ethers.toUtf8Bytes("test data"));
-      const validSig = await trustedKey1.signingKey.sign(dataHash);
-      const validSignature = ethers.Signature.from(validSig).serialized;
+        const dataHash = ethers.keccak256(ethers.toUtf8Bytes("test data"));
+        const validSig = await trustedKey1.signingKey.sign(dataHash);
+        const validSignature = ethers.Signature.from(validSig).serialized;
 
-      await expect(
-        fastProver.verifyData(dataHash, validSignature),
-      ).to.be.revertedWithCustomError(fastProver, "EnforcedPause");
+        await expect(
+          fastProver.verifyData(dataHash, validSignature),
+        ).to.be.revertedWithCustomError(fastProver, "EnforcedPause");
+      });
     });
   });
 

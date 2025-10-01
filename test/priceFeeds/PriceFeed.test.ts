@@ -17,7 +17,7 @@ describe("PriceFeed", () => {
     return { priceFeed, owner, updater, user };
   }
 
-  describe("Deployment", () => {
+  describe("Initialization", () => {
     it("Should deploy successfully", async () => {
       const { priceFeed } = await loadFixture(deployPriceFeedFixture);
       expect(priceFeed.target).to.be.properAddress;
@@ -34,7 +34,7 @@ describe("PriceFeed", () => {
     });
   });
 
-  describe("Initialization", () => {
+  describe("Configuration", () => {
     it("Should initialize successfully with valid parameters", async () => {
       const { priceFeed, updater } = await loadFixture(deployPriceFeedFixture);
 
@@ -50,7 +50,7 @@ describe("PriceFeed", () => {
       expect(await priceFeed.initialized()).to.be.true;
     });
 
-    it("Should revert when trying to initialize with zero address updater", async () => {
+    it("Should revert when initializing with zero address updater", async () => {
       const { priceFeed } = await loadFixture(deployPriceFeedFixture);
 
       const description = "ETH/USD";
@@ -61,7 +61,7 @@ describe("PriceFeed", () => {
       ).to.be.revertedWithCustomError(priceFeed, "InvalidUpdaterAddress");
     });
 
-    it("Should revert when trying to initialize twice", async () => {
+    it("Should revert when initializing twice", async () => {
       const { priceFeed, updater } = await loadFixture(deployPriceFeedFixture);
 
       const description = "ETH/USD";
@@ -75,7 +75,7 @@ describe("PriceFeed", () => {
     });
   });
 
-  describe("Update Result", () => {
+  describe("Price Updates", () => {
     it("Should update result successfully with valid parameters", async () => {
       const { priceFeed, updater } = await loadFixture(deployPriceFeedFixture);
 

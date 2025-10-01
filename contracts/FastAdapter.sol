@@ -119,7 +119,7 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
     /// @return ids GLOBAL price IDs (already mapped from raw Pyth IDs)
     /// @return infos Decoded price infos corresponding to each id
     /// @dev Uses SEDA's FastProver to verify, decodes the batch, and maps rawId -> GLOBAL id via `_computePriceId`.
-    function _decodeUpdates(
+    function _processUpdateData(
         bytes calldata updateData
     ) internal view override returns (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos) {
         (FastStructs.ProgramConfig memory cfg, SedaPriceUpdate[] memory ups, ) = _verifyAndDecode(updateData);

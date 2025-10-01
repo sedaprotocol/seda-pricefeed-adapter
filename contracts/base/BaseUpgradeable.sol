@@ -36,10 +36,6 @@ abstract contract BaseUpgradeable is Initializable, OwnableUpgradeable, UUPSUpgr
         __Pausable_init();
     }
 
-    // function __BaseUpgradeable_init_unchained(address owner) internal onlyInitializing {
-    //     // no-op
-    // }
-
     // ============ External Functions ============
 
     /// @notice Pauses the contract, preventing new operations (owner only)
