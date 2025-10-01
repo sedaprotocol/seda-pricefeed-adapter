@@ -43,7 +43,7 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
     /// @param sedaProverAddress Address of the SEDA SECP256k1 prover contract for result verification
     /// @param owner Address that will have administrative privileges over the adapter
     function initialize(address sedaProverAddress, address owner) public initializer {
-        if (sedaProverAddress == address(0)) revert ZeroAddressNotAllowed("SEDA prover");
+        if (sedaProverAddress == address(0)) revert ZeroAddressNotAllowed("prover");
         if (owner == address(0)) revert ZeroAddressNotAllowed("owner");
 
         __BaseUpgradeable_init(owner);
@@ -56,7 +56,7 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
 
     /// @notice Updates the SEDA prover contract address (owner only)
     /// @param newProver Address of the new SEDA prover contract
-    function updateProver(address newProver) external onlyOwner onlyProxy {
+    function updateProver(address newProver) external onlyProxy onlyOwner {
         if (newProver == address(0)) revert ZeroAddressNotAllowed("SEDA prover");
         FastAdapterStorage.Layout storage s = FastAdapterStorage.layout();
         address oldProver = s.sedaProver;

@@ -47,7 +47,7 @@ describe("FastAdapter", () => {
     };
   }
 
-  describe("Initialization & Access Control", () => {
+  describe("Initialization", () => {
     it("Should initialize with correct parameters", async () => {
       const { fastAdapter, fastProver, owner } = await loadFixture(
         deployFastAdapterFixture,
@@ -59,6 +59,55 @@ describe("FastAdapter", () => {
       );
     });
 
+    it("Should not initialize with zero owner address", async () => {
+      const [owner, _user] = await ethers.getSigners();
+
+      // Deploy FastProver contract
+      const FastProver = await ethers.getContractFactory("FastProver");
+
+      const fastProver = (await upgrades.deployProxy(
+        FastProver,
+        [owner.address],
+        {
+          initializer: "initialize",
+        },
+      )) as unknown as FastProver;
+
+      // Deploy FastAdapter with zero owner address
+      const FastAdapter = await ethers.getContractFactory("FastAdapter");
+      await expect(
+        upgrades.deployProxy(
+          FastAdapter,
+          [await fastProver.getAddress(), ethers.ZeroAddress],
+          {
+            initializer: "initialize",
+          },
+        ),
+      )
+        .to.be.revertedWithCustomError(FastAdapter, "ZeroAddressNotAllowed")
+        .withArgs("owner");
+    });
+
+    it("Should not initialize with zero prover address", async () => {
+      const [owner, _user] = await ethers.getSigners();
+
+      // Deploy FastAdapter with zero owner address
+      const FastAdapter = await ethers.getContractFactory("FastAdapter");
+      await expect(
+        upgrades.deployProxy(
+          FastAdapter,
+          [await ethers.ZeroAddress, owner.address],
+          {
+            initializer: "initialize",
+          },
+        ),
+      )
+        .to.be.revertedWithCustomError(FastAdapter, "ZeroAddressNotAllowed")
+        .withArgs("prover");
+    });
+  });
+
+  describe("Access Control", () => {
     describe("Prover Management", () => {
       it("Should allow owner to update prover", async () => {
         const { fastAdapter, fastProver } = await loadFixture(
@@ -359,6 +408,46 @@ describe("FastAdapter", () => {
           ),
         ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
       });
+
+      it("Should revert when paused", async () => {
+        const { fastAdapter, fastProver } = await loadFixture(
+          deployFastAdapterFixture,
+        );
+
+        // Set up trusted key and asset
+        const trustedKey = createTrustedKey();
+        await fastProver.addTrustedKey(trustedKey.address);
+        const assetId = computeAssetId("BTC/USD");
+
+        // First, update with some initial data to establish a baseline
+        const initialUpdateData = await createValidUpdateData(
+          trustedKey,
+          "BTC/USD",
+          50000n,
+          100n,
+        );
+        await fastAdapter.updatePriceFeeds([initialUpdateData]);
+
+        // Pause the contract
+        await fastAdapter.pause();
+
+        // Create newer update data
+        const newerUpdateData = await createValidUpdateData(
+          trustedKey,
+          "BTC/USD",
+          51000n,
+          100n,
+        );
+
+        // Try to call updatePriceFeedsIfNecessary when paused - should revert
+        await expect(
+          fastAdapter.updatePriceFeedsIfNecessary(
+            [newerUpdateData],
+            [assetId],
+            [Math.floor(Date.now() / 1000) + 1], // Future timestamp to ensure update is needed
+          ),
+        ).to.be.revertedWithCustomError(fastAdapter, "EnforcedPause");
+      });
     });
 
     describe("parsePriceFeedUpdates*", () => {
@@ -463,10 +552,11 @@ describe("FastAdapter", () => {
         ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
       });
 
-      it("Should handle uniqueness mode with storage updates", async () => {
+      it("Should handle uniqueness mode with different scenarios", async () => {
         const currentTime = Math.floor(Date.now() / 1000);
         const earlierTime = currentTime - 1800; // 30 minutes ago
         const laterTime = currentTime - 900; // 15 minutes ago
+        const sameTime = currentTime - 1800; // Same timestamp for both updates
 
         // Create updates with different timestamps for the same asset
         const earlierData = await createValidUpdateData(
@@ -483,9 +573,23 @@ describe("FastAdapter", () => {
           100n,
           laterTime,
         );
+        const sameTimeData1 = await createValidUpdateData(
+          trustedKey,
+          "BTC/USD",
+          40000n,
+          100n,
+          sameTime,
+        );
+        const sameTimeData2 = await createValidUpdateData(
+          trustedKey,
+          "BTC/USD",
+          50000n,
+          100n,
+          sameTime,
+        );
 
-        // Test uniqueness mode with storage updates - should prefer earlier timestamp
-        const [priceFeeds] =
+        // Test 1: Uniqueness mode with storage updates - should prefer earlier timestamp
+        const [priceFeeds1] =
           await fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
             [laterData, earlierData], // Later first, then earlier
             [assetId],
@@ -496,9 +600,25 @@ describe("FastAdapter", () => {
             true, // updateStorage = true
           );
 
-        expect(priceFeeds).to.have.length(1);
-        expect(priceFeeds[0].id).to.equal(assetId);
-        expect(priceFeeds[0].price.price).to.equal(40000n); // Earlier timestamp wins
+        expect(priceFeeds1).to.have.length(1);
+        expect(priceFeeds1[0].id).to.equal(assetId);
+        expect(priceFeeds1[0].price.price).to.equal(40000n); // Earlier timestamp wins
+
+        // Test 2: Uniqueness mode when shouldReplace is false - first update should be kept
+        const [priceFeeds2] =
+          await fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
+            [sameTimeData1, sameTimeData2], // First update should win
+            [assetId],
+            0,
+            currentTime + 3600,
+            true, // checkUniqueness = true
+            false,
+            false,
+          );
+
+        expect(priceFeeds2).to.have.length(1);
+        expect(priceFeeds2[0].id).to.equal(assetId);
+        expect(priceFeeds2[0].price.price).to.equal(40000n); // First update wins
       });
 
       it("Should parse price feed updates with uniqueness check", async () => {
@@ -522,43 +642,6 @@ describe("FastAdapter", () => {
         expect(priceFeeds.length).to.equal(1);
         expect(priceFeeds[0].id).to.equal(assetId);
         expect(priceFeeds[0].price.price).to.equal(50000n);
-      });
-
-      it("Should handle uniqueness mode when shouldReplace is false", async () => {
-        const currentTime = Math.floor(Date.now() / 1000);
-        const sameTime = currentTime - 1800; // Same timestamp for both updates
-
-        // Create two updates with the same timestamp
-        const updateData1 = await createValidUpdateData(
-          trustedKey,
-          "BTC/USD",
-          40000n,
-          100n,
-          sameTime,
-        );
-        const updateData2 = await createValidUpdateData(
-          trustedKey,
-          "BTC/USD",
-          50000n,
-          100n,
-          sameTime,
-        );
-
-        // Test uniqueness mode - first update should be kept (shouldReplace = false for second)
-        const [priceFeeds] =
-          await fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
-            [updateData1, updateData2], // First update should win
-            [assetId],
-            0,
-            currentTime + 3600,
-            true, // checkUniqueness = true
-            false,
-            false,
-          );
-
-        expect(priceFeeds).to.have.length(1);
-        expect(priceFeeds[0].id).to.equal(assetId);
-        expect(priceFeeds[0].price.price).to.equal(40000n); // First update wins
       });
 
       it("Should handle price feed not found scenarios", async () => {
@@ -740,7 +823,8 @@ describe("FastAdapter", () => {
     });
 
     describe("Price Retrieval Functions", () => {
-      it("Should return prices for existing assets", async () => {
+      it("Should return prices for existing assets and revert for non-existent ones", async () => {
+        // Test existing asset
         await submitPriceUpdate(
           fastAdapter,
           trustedKey,
@@ -760,9 +844,8 @@ describe("FastAdapter", () => {
         expect(emaPrice.conf).to.equal(100n);
         expect(emaPrice.expo).to.equal(-8);
         expect(emaPrice.publishTime).to.be.greaterThan(0);
-      });
 
-      it("Should revert for non-existent assets", async () => {
+        // Test non-existent asset
         const nonExistentId = ethers.id("non_existent");
 
         await expect(
@@ -860,7 +943,7 @@ describe("FastAdapter", () => {
     });
   });
 
-  describe("noMsgValue Modifier Tests", () => {
+  describe("Security", () => {
     let fastAdapter: FastAdapter;
     let fastProver: FastProver;
     let trustedKey: Wallet;
@@ -876,7 +959,7 @@ describe("FastAdapter", () => {
       assetId = computeAssetId("BTC/USD");
     });
 
-    it("Should reject ETH sent to updatePriceFeeds", async () => {
+    it("Should reject ETH sent to all update functions", async () => {
       const updateData = await createValidUpdateData(
         trustedKey,
         "BTC/USD",
@@ -884,21 +967,14 @@ describe("FastAdapter", () => {
         100n,
       );
 
+      // Test updatePriceFeeds
       await expect(
         fastAdapter.updatePriceFeeds([updateData], {
           value: ethers.parseEther("1"),
         }),
       ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
-    });
 
-    it("Should reject ETH sent to updatePriceFeedsIfNecessary", async () => {
-      const updateData = await createValidUpdateData(
-        trustedKey,
-        "BTC/USD",
-        50000n,
-        100n,
-      );
-
+      // Test updatePriceFeedsIfNecessary
       await expect(
         fastAdapter.updatePriceFeedsIfNecessary(
           [updateData],
@@ -909,7 +985,7 @@ describe("FastAdapter", () => {
       ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
     });
 
-    it("Should reject ETH sent to parsePriceFeedUpdates", async () => {
+    it("Should reject ETH sent to all parse functions", async () => {
       const updateData = await createValidUpdateData(
         trustedKey,
         "BTC/USD",
@@ -917,6 +993,7 @@ describe("FastAdapter", () => {
         100n,
       );
 
+      // Test parsePriceFeedUpdates
       await expect(
         fastAdapter.parsePriceFeedUpdates(
           [updateData],
@@ -926,16 +1003,8 @@ describe("FastAdapter", () => {
           { value: ethers.parseEther("1") },
         ),
       ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
-    });
 
-    it("Should reject ETH sent to parsePriceFeedUpdatesWithConfig", async () => {
-      const updateData = await createValidUpdateData(
-        trustedKey,
-        "BTC/USD",
-        50000n,
-        100n,
-      );
-
+      // Test parsePriceFeedUpdatesWithConfig
       await expect(
         fastAdapter.parsePriceFeedUpdatesWithConfig(
           [updateData],
@@ -948,16 +1017,8 @@ describe("FastAdapter", () => {
           { value: ethers.parseEther("1") },
         ),
       ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
-    });
 
-    it("Should reject ETH sent to parsePriceFeedUpdatesUnique", async () => {
-      const updateData = await createValidUpdateData(
-        trustedKey,
-        "BTC/USD",
-        50000n,
-        100n,
-      );
-
+      // Test parsePriceFeedUpdatesUnique
       await expect(
         fastAdapter.parsePriceFeedUpdatesUnique(
           [updateData],
@@ -967,9 +1028,8 @@ describe("FastAdapter", () => {
           { value: ethers.parseEther("1") },
         ),
       ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
-    });
 
-    it("Should reject ETH sent to parseTwapPriceFeedUpdates", async () => {
+      // Test parseTwapPriceFeedUpdates
       await expect(
         fastAdapter.parseTwapPriceFeedUpdates(
           [ethers.toUtf8Bytes("test")],
@@ -978,17 +1038,7 @@ describe("FastAdapter", () => {
         ),
       ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
     });
-  });
 
-  describe("Edge Cases & Utilities", () => {
-    it("Should return empty asset IDs initially", async () => {
-      const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
-      const assetIds = await fastAdapter.getAssetIds();
-      expect(assetIds.length).to.equal(0);
-    });
-  });
-
-  describe("UUPS Upgrade", () => {
     it("Should upgrade and preserve state", async () => {
       const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
 
@@ -1001,6 +1051,46 @@ describe("FastAdapter", () => {
       );
 
       expect(await upgradedContract.getProver()).to.equal(initialProver);
+    });
+
+    it("Should revert when trying to reinitialize", async () => {
+      const { fastAdapter, owner } = await loadFixture(
+        deployFastAdapterFixture,
+      );
+
+      // Try to call initialize again on an already initialized contract
+      await expect(
+        fastAdapter.initialize(
+          await fastAdapter.getProver(),
+          await owner.getAddress(),
+        ),
+      ).to.be.revertedWithCustomError(fastAdapter, "InvalidInitialization");
+    });
+
+    it("Should revert when updateProver is called directly on implementation", async () => {
+      const { owner } = await loadFixture(deployFastAdapterFixture);
+
+      // Deploy implementation directly (not through proxy)
+      const FastAdapterImplementation =
+        await ethers.getContractFactory("FastAdapter");
+      const implementation = await FastAdapterImplementation.deploy();
+
+      // Try to call updateProver directly on implementation
+      // This should hit the onlyProxy modifier's else branch (since we changed the order to onlyProxy onlyOwner)
+      await expect(
+        implementation.updateProver(owner.address),
+      ).to.be.revertedWithCustomError(
+        implementation,
+        "UUPSUnauthorizedCallContext",
+      );
+    });
+  });
+
+  describe("Edge Cases & Utilities", () => {
+    it("Should return empty asset IDs initially", async () => {
+      const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
+      const assetIds = await fastAdapter.getAssetIds();
+      expect(assetIds.length).to.equal(0);
     });
   });
 });
