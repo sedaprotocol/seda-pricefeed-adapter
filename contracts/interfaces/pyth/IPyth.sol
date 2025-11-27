@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-pragma solidity ^0.8.28;
+pragma solidity >=0.8.28 <0.9.0;
 
 import "./PythStructs.sol";
 import "./IPythEvents.sol";

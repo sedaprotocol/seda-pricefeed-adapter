@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache 2
 
-pragma solidity ^0.8.28;
+pragma solidity >=0.8.28 <0.9.0;
 
 library PythErrors {
     // Function arguments are invalid (e.g., the arguments lengths mismatch)

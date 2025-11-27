@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity >=0.8.28 <0.9.0;
 
 import {BaseUpgradeable} from "./base/BaseUpgradeable.sol";
 import {BasePythAdapter} from "./base/BasePythAdapter.sol";

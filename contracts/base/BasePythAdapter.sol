@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity >=0.8.28 <0.9.0;
 
 import {IPyth} from "../interfaces/pyth/IPyth.sol";
 import {PythStructs} from "../interfaces/pyth/PythStructs.sol";
@@ -317,7 +317,7 @@ abstract contract BasePythAdapter is IPyth {
         // Existing candidate (if any)
         bool hasCandidate = (priceFeeds[targetIndex].id != 0);
         uint64 existingTime = hasCandidate ? uint64(priceFeeds[targetIndex].price.publishTime) : 0;
-        uint64 newTime = uint64(priceInfo.publishTime);
+        uint64 newTime = priceInfo.publishTime;
 
         if (checkUniqueness) {
             // Choose the earliest-in-window; if equal timestamp, keep the first one seen.
