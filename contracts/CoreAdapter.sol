@@ -210,7 +210,7 @@ contract CoreAdapter is BaseUpgradeable {
     {
         address feed = priceFeedAddresses(ticker);
         if (feed == address(0)) revert InvalidParameter("Unknown ticker");
-        return PriceFeed(priceFeedAddresses(ticker)).latestRoundData();
+        return PriceFeed(feed).latestRoundData();
     }
 
     /// @notice Updates the SEDA prover contract address (owner only)

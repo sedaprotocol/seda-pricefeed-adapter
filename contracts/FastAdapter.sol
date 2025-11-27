@@ -4,7 +4,6 @@ pragma solidity >=0.8.28 <0.9.0;
 import {BaseUpgradeable} from "./base/BaseUpgradeable.sol";
 import {BasePythAdapter} from "./base/BasePythAdapter.sol";
 import {FastProver} from "./provers/FastProver.sol";
-import {SedaDataTypes} from "@seda-protocol/evm/contracts/libraries/SedaDataTypes.sol";
 import {PythStructs} from "./interfaces/pyth/PythStructs.sol";
 import {FastStructs} from "./FastStructs.sol";
 
@@ -122,14 +121,14 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
     function _processUpdateData(
         bytes calldata updateData
     ) internal view override returns (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos) {
-        (FastStructs.ProgramConfig memory cfg, SedaPriceUpdate[] memory ups, ) = _verifyAndDecode(updateData);
+        (FastStructs.ProgramConfig memory cfg, SedaPriceUpdate[] memory updates) = _verifyAndDecode(updateData);
 
-        ids = new bytes32[](ups.length);
-        infos = new PythAdapterStorage.PriceInfo[](ups.length);
+        ids = new bytes32[](updates.length);
+        infos = new PythAdapterStorage.PriceInfo[](updates.length);
 
-        for (uint256 i = 0; i < ups.length; ++i) {
-            ids[i] = _computePriceId(cfg, ups[i].rawId); // GLOBAL ID = keccak(exec,tally,rawId)
-            infos[i] = ups[i].priceInfo; // decoded price fields
+        for (uint256 i = 0; i < updates.length; ++i) {
+            ids[i] = _computePriceId(cfg, updates[i].rawId); // GLOBAL ID = keccak(exec,tally,rawId)
+            infos[i] = updates[i].priceInfo; // decoded price fields
         }
     }
 
@@ -154,7 +153,6 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
     /// @param signedPayload The signed payload to verify and decode
     /// @return programConfig The program configuration
     /// @return updates The price updates array (may contain multiple price updates for a single result)
-    /// @return result The SEDA result
     function _verifyAndDecode(
         bytes calldata signedPayload
     )
@@ -162,8 +160,7 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
         view
         returns (
             FastStructs.ProgramConfig memory programConfig,
-            SedaPriceUpdate[] memory updates,
-            SedaDataTypes.Result memory result
+            SedaPriceUpdate[] memory updates
         )
     {
         FastStructs.SignedPayload memory payload = abi.decode(signedPayload, (FastStructs.SignedPayload));
@@ -180,7 +177,6 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
         if (batch.result.exitCode != 0) revert InvalidResult("Oracle execution failed");
 
         programConfig = batch.programConfig;
-        result = batch.result;
         updates = abi.decode(batch.result.result, (SedaPriceUpdate[]));
 
         // Validate updates after decoding

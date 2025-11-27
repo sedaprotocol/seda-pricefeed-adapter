@@ -258,7 +258,7 @@ abstract contract BasePythAdapter is IPyth {
         priceFeeds = new PythStructs.PriceFeed[](priceIds.length);
 
         // Total updates count across blobs (for strict minimality)
-        uint64 totalUpdatesAcrossBlobs = 0;
+        uint256 totalUpdatesAcrossBlobs = 0;
 
         for (uint256 i = 0; i < updateData.length; ++i) {
             totalUpdatesAcrossBlobs += _processFilteredUpdates(
@@ -316,7 +316,7 @@ abstract contract BasePythAdapter is IPyth {
 
         // Existing candidate (if any)
         bool hasCandidate = (priceFeeds[targetIndex].id != 0);
-        uint64 existingTime = hasCandidate ? uint64(priceFeeds[targetIndex].price.publishTime) : 0;
+        uint256 existingTime = hasCandidate ? priceFeeds[targetIndex].price.publishTime : 0;
         uint64 newTime = priceInfo.publishTime;
 
         if (checkUniqueness) {
@@ -444,7 +444,7 @@ abstract contract BasePythAdapter is IPyth {
         bool checkUniqueness,
         bool updateStorage,
         PythStructs.PriceFeed[] memory priceFeeds
-    ) private returns (uint64) {
+    ) private returns (uint256) {
         (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos) = _processUpdateData(updateData);
 
         for (uint256 i = 0; i < ids.length; ++i) {
@@ -461,7 +461,7 @@ abstract contract BasePythAdapter is IPyth {
         }
 
         // Minimality counts *all* updates present in this blob
-        return uint64(ids.length);
+        return ids.length;
     }
 
     // ============ Abstract Functions ============
