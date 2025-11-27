@@ -1,10 +1,18 @@
+version: v2
+
 config:
-  solc: "0.8.28"
-  framework: "hardhat"
-  framework_version: "^2.26.3"
-  node_version: "18"
-  package_manager: "bun"
-  package_manager_version: "^1.2.19"
+  contracts:
+    evm:
+      enabled: true
+      solc: "0.8.28"
+      framework: "hardhat"
+      framework-version: "^2.26.3"
+      node-version: "18"
+      package-manager: "bun"
+      package-manager-version: "^1.2.19"
+      excluded-paths:
+        - "contracts/test/**"
+        - "contracts/mocks/**"
 environment:
   IS_SLITHER: true
 tasks:
