@@ -1,9 +1,9 @@
 import type { ContractTransactionResponse, Wallet } from "ethers";
 import { ethers } from "hardhat";
 
-// ABI type for the new PriceUpdateBatch (with feedConfigs)
-const BATCH_ABI_TYPE =
-  "tuple(tuple(bytes32 execProgramId,bytes32 tallyProgramId) programConfig,tuple(bytes32 drId,uint128 gasUsed,uint64 blockHeight,uint64 blockTimestamp,bool consensus,uint8 exitCode,string version,bytes result,bytes paybackAddress,bytes sedaPayload) result,tuple(bytes32 rawId,int32 expo)[] feedConfigs)";
+// ABI type for SedaDataTypes.Result
+const RESULT_ABI_TYPE =
+  "tuple(bytes32 drId,uint128 gasUsed,uint64 blockHeight,uint64 blockTimestamp,bool consensus,uint8 exitCode,string version,bytes result,bytes paybackAddress,bytes sedaPayload)";
 
 const SIGNED_PAYLOAD_ABI_TYPE = "tuple(bytes data, bytes signature)";
 
@@ -12,12 +12,6 @@ const SEDA_VERSION = "0.0.1";
 
 /**
  * Computes deriveResultId matching SedaDataTypes.deriveResultId in Solidity.
- *
- * deriveResultId = keccak256(
- *   keccak256(version) || drId || consensus(1 byte) || exitCode(1 byte) ||
- *   keccak256(result) || blockHeight(8 bytes BE) || blockTimestamp(8 bytes BE) ||
- *   gasUsed(16 bytes BE) || keccak256(paybackAddress) || keccak256(sedaPayload)
- * )
  */
 export function deriveResultId(result: {
   drId: string;
@@ -83,20 +77,53 @@ export function encodeRawOracleOutput(
   return ethers.concat([pricePadded, timestampPadded]);
 }
 
+/**
+ * Computes the drId for a given set of request parameters.
+ * This must match what SEDA FAST uses (SedaDataTypes.deriveRequestId).
+ */
+export function computeDrId(params: {
+  execProgramId: string;
+  tallyProgramId: string;
+  execInputs: string;
+  tallyInputs: string;
+  execGasLimit: bigint;
+  tallyGasLimit: bigint;
+  replicationFactor: number;
+  consensusFilter: string;
+  gasPrice: bigint;
+  memo: string;
+}): string {
+  return ethers.keccak256(
+    ethers.concat([
+      ethers.keccak256(ethers.toUtf8Bytes(SEDA_VERSION)),
+      params.execProgramId,
+      ethers.keccak256(params.execInputs),
+      ethers.zeroPadValue(ethers.toBeHex(params.execGasLimit), 8),
+      params.tallyProgramId,
+      ethers.keccak256(params.tallyInputs),
+      ethers.zeroPadValue(ethers.toBeHex(params.tallyGasLimit), 8),
+      ethers.zeroPadValue(ethers.toBeHex(params.replicationFactor), 2),
+      ethers.keccak256(params.consensusFilter),
+      ethers.zeroPadValue(ethers.toBeHex(params.gasPrice), 16),
+      ethers.keccak256(ethers.toUtf8Bytes(params.memo)),
+    ]),
+  );
+}
+
 // Helper function to submit a price update
 export async function submitPriceUpdate(
   adapter: {
     updatePriceFeeds: (data: string[]) => Promise<ContractTransactionResponse>;
   },
   trustedKey: Wallet,
-  symbol: string,
+  drId: string,
   price: bigint,
   conf: bigint,
   publishTime: number = Math.floor(Date.now() / 1000),
 ) {
   const updateData = await createValidUpdateData(
     trustedKey,
-    symbol,
+    drId,
     price,
     conf,
     publishTime,
@@ -107,20 +134,16 @@ export async function submitPriceUpdate(
 // Helper function to create valid update data
 export async function createValidUpdateData(
   trustedKey: Wallet,
-  symbol: string,
+  drId: string,
   price: bigint,
   conf: bigint,
   publishTime: number = Math.floor(Date.now() / 1000),
 ): Promise<string> {
-  const execProgramId = ethers.id("exec_program");
-  const tallyProgramId = ethers.id("tally_program");
-  const rawId = ethers.id(symbol);
-
   // Encode price + timestamp into raw 64-byte oracle output
   const rawResult = encodeRawOracleOutput(price, publishTime);
 
   const result = {
-    drId: ethers.id("dr_id"),
+    drId,
     gasUsed: 100000,
     blockHeight: 12345,
     blockTimestamp: publishTime,
@@ -132,22 +155,15 @@ export async function createValidUpdateData(
     sedaPayload: "0x",
   };
 
-  const feedConfigs = [{ rawId, expo: -8 }];
-
-  const batch = {
-    programConfig: { execProgramId, tallyProgramId },
-    result,
-    feedConfigs,
-  };
-
+  // ABI-encode just the Result (no more PriceUpdateBatch wrapper)
   const data = ethers.AbiCoder.defaultAbiCoder().encode(
-    [BATCH_ABI_TYPE],
-    [batch],
+    [RESULT_ABI_TYPE],
+    [result],
   );
 
   // Sign with deriveResultId (matches what SEDA FAST signs)
-  const resultId = deriveResultId(result);
-  const signature = trustedKey.signingKey.sign(resultId);
+  const resultIdHash = deriveResultId(result);
+  const signature = trustedKey.signingKey.sign(resultIdHash);
   const serializedSignature = ethers.Signature.from(signature).serialized;
 
   return ethers.AbiCoder.defaultAbiCoder().encode(
@@ -159,18 +175,15 @@ export async function createValidUpdateData(
 // Helper function to create invalid exit code payload
 export async function createInvalidExitCodePayload(
   trustedKey: Wallet,
+  drId: string,
 ): Promise<string> {
-  const execProgramId = ethers.id("exec_program");
-  const tallyProgramId = ethers.id("tally_program");
-  const rawId = ethers.id("BTC/USD");
-
   const rawResult = encodeRawOracleOutput(
     50000n,
     Math.floor(Date.now() / 1000),
   );
 
   const result = {
-    drId: ethers.id("dr_id"),
+    drId,
     gasUsed: 100000,
     blockHeight: 12345,
     blockTimestamp: Math.floor(Date.now() / 1000),
@@ -182,21 +195,13 @@ export async function createInvalidExitCodePayload(
     sedaPayload: "0x",
   };
 
-  const feedConfigs = [{ rawId, expo: -8 }];
-
-  const batch = {
-    programConfig: { execProgramId, tallyProgramId },
-    result,
-    feedConfigs,
-  };
-
   const data = ethers.AbiCoder.defaultAbiCoder().encode(
-    [BATCH_ABI_TYPE],
-    [batch],
+    [RESULT_ABI_TYPE],
+    [result],
   );
 
-  const resultId = deriveResultId(result);
-  const signature = trustedKey.signingKey.sign(resultId);
+  const resultIdHash = deriveResultId(result);
+  const signature = trustedKey.signingKey.sign(resultIdHash);
   const serializedSignature = ethers.Signature.from(signature).serialized;
 
   return ethers.AbiCoder.defaultAbiCoder().encode(
@@ -208,12 +213,10 @@ export async function createInvalidExitCodePayload(
 // Helper function to create empty batch payload (0 feeds, 0-length result)
 export async function createEmptyBatchPayload(
   trustedKey: Wallet,
+  drId: string,
 ): Promise<string> {
-  const execProgramId = ethers.id("exec_program");
-  const tallyProgramId = ethers.id("tally_program");
-
   const result = {
-    drId: ethers.id("dr_id"),
+    drId,
     gasUsed: 100000,
     blockHeight: 12345,
     blockTimestamp: Math.floor(Date.now() / 1000),
@@ -225,21 +228,13 @@ export async function createEmptyBatchPayload(
     sedaPayload: "0x",
   };
 
-  const feedConfigs: { rawId: string; expo: number }[] = [];
-
-  const batch = {
-    programConfig: { execProgramId, tallyProgramId },
-    result,
-    feedConfigs,
-  };
-
   const data = ethers.AbiCoder.defaultAbiCoder().encode(
-    [BATCH_ABI_TYPE],
-    [batch],
+    [RESULT_ABI_TYPE],
+    [result],
   );
 
-  const resultId = deriveResultId(result);
-  const signature = trustedKey.signingKey.sign(resultId);
+  const resultIdHash = deriveResultId(result);
+  const signature = trustedKey.signingKey.sign(resultIdHash);
   const serializedSignature = ethers.Signature.from(signature).serialized;
 
   return ethers.AbiCoder.defaultAbiCoder().encode(
@@ -248,16 +243,16 @@ export async function createEmptyBatchPayload(
   );
 }
 
-// Helper function to compute asset ID
-export function computeAssetId(symbol: string): string {
+// Helper function to compute asset ID (GLOBAL price ID)
+export function computeAssetId(
+  execProgramId: string,
+  tallyProgramId: string,
+  rawId: string,
+): string {
   return ethers.keccak256(
     ethers.AbiCoder.defaultAbiCoder().encode(
       ["bytes32", "bytes32", "bytes32"],
-      [
-        ethers.id("exec_program"),
-        ethers.id("tally_program"),
-        ethers.id(symbol),
-      ],
+      [execProgramId, tallyProgramId, rawId],
     ),
   );
 }

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {FastStructs} from "../FastStructs.sol";
+
 /// @title FastAdapterStorage
 /// @author Open Oracle Association
 /// @notice Storage library for FastAdapter using the ERC-7201 storage pattern.
@@ -21,10 +23,18 @@ library FastAdapterStorage {
     /// @dev Do not change the order of fields. For new fields, create a new versioned layout.
     struct Layout {
         /// @notice The oracle prover contract used for result verification
-        /// @dev Generic name to support different oracle types (SEDA, Chainlink, etc.)
         address sedaProver;
-        /// @notice Allowed oracle program configs keyed by keccak256(abi.encode(execProgramId, tallyProgramId))
-        mapping(bytes32 => bool) allowedProgramConfigs;
+        /// @notice Registered data request configs keyed by drId
+        /// @dev drId is part of the signed result, tying the signature to specific program + feed configs
+        mapping(bytes32 => DrIdEntry) drIdRegistry;
+    }
+
+    /// @notice Storage entry for a registered drId
+    /// @dev Uses a separate struct because mappings with dynamic arrays need careful handling
+    struct DrIdEntry {
+        bool registered;
+        FastStructs.ProgramConfig programConfig;
+        FastStructs.FeedConfig[] feedConfigs;
     }
 
     // ============ Functions ============

@@ -9,7 +9,7 @@ import {SedaDataTypes} from "@seda-protocol/evm/contracts/libraries/SedaDataType
 /// @dev Contains the structs for FastAdapter
 library FastStructs {
     /// @notice Struct for submitting signed data to the contract
-    /// @dev Used for passing data and its corresponding signature for verification
+    /// @dev `data` is an ABI-encoded SedaDataTypes.Result, `signature` is the SEDA FAST ECDSA signature
     struct SignedPayload {
         bytes data;
         bytes signature;
@@ -22,20 +22,19 @@ library FastStructs {
         bytes32 tallyProgramId;
     }
 
-    /// @notice Feed metadata provided by the relayer (not covered by SEDA FAST signature)
+    /// @notice Feed metadata stored on-chain by the owner
     /// @dev Used to map raw oracle output bytes to Pyth-compatible PriceInfo structs
     struct FeedConfig {
         bytes32 rawId; // Pyth feed ID (e.g., USDC/USD Pyth ID)
         int32 expo; // Price exponent (e.g., -8)
     }
 
-    /// @notice Struct for updating price feeds with multiple results
-    /// @dev Contains the program config, signed SEDA result, and unsigned feed metadata.
-    ///      Only `result` is covered by the SEDA FAST signature (via deriveResultId).
-    ///      `feedConfigs` is provided by the relayer to map raw result bytes to price feeds.
-    struct PriceUpdateBatch {
+    /// @notice Registered data request configuration stored on-chain
+    /// @dev Maps a drId to its program config and feed metadata.
+    ///      The drId is part of the signed result, so this ties the signature
+    ///      to specific program + feed configurations, preventing replay attacks.
+    struct DataRequestConfig {
         ProgramConfig programConfig;
-        SedaDataTypes.Result result;
         FeedConfig[] feedConfigs;
     }
 }
