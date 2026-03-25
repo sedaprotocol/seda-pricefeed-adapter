@@ -201,6 +201,11 @@ describe("FastAdapter", () => {
 
       trustedKey = createTrustedKey();
       await fastProver.addTrustedKey(trustedKey.address);
+      await fastAdapter.setProgramConfig(
+        ethers.id("exec_program"),
+        ethers.id("tally_program"),
+        true,
+      );
       assetId = computeAssetId("BTC/USD");
     });
 
@@ -220,7 +225,7 @@ describe("FastAdapter", () => {
 
         const price = await fastAdapter.getPriceUnsafe(assetId);
         expect(price.price).to.equal(50000n);
-        expect(price.conf).to.equal(100n);
+        expect(price.conf).to.equal(0n);
       });
 
       it("Should handle multiple updates in batch", async () => {
@@ -296,9 +301,42 @@ describe("FastAdapter", () => {
       });
 
       it("Should revert with invalid signature", async () => {
+        // Create a valid batch but with a bad signature (wrong length)
+        const execProgramId = ethers.id("exec_program");
+        const tallyProgramId = ethers.id("tally_program");
+        const rawId = ethers.id("BTC/USD");
+        const rawResult = ethers.concat([
+          ethers.zeroPadValue(ethers.toBeHex(50000n), 32),
+          ethers.zeroPadValue(
+            ethers.toBeHex(Math.floor(Date.now() / 1000)),
+            32,
+          ),
+        ]);
+        const batch = {
+          programConfig: { execProgramId, tallyProgramId },
+          result: {
+            drId: ethers.id("dr_id"),
+            gasUsed: 100000,
+            blockHeight: 12345,
+            blockTimestamp: Math.floor(Date.now() / 1000),
+            consensus: true,
+            exitCode: 0,
+            version: "0.0.1",
+            result: rawResult,
+            paybackAddress: "0x",
+            sedaPayload: "0x",
+          },
+          feedConfigs: [{ rawId, expo: -8 }],
+        };
+        const data = ethers.AbiCoder.defaultAbiCoder().encode(
+          [
+            "tuple(tuple(bytes32 execProgramId,bytes32 tallyProgramId) programConfig,tuple(bytes32 drId,uint128 gasUsed,uint64 blockHeight,uint64 blockTimestamp,bool consensus,uint8 exitCode,string version,bytes result,bytes paybackAddress,bytes sedaPayload) result,tuple(bytes32 rawId,int32 expo)[] feedConfigs)",
+          ],
+          [batch],
+        );
         const invalidPayload = ethers.AbiCoder.defaultAbiCoder().encode(
           ["tuple(bytes data, bytes signature)"],
-          [{ data: ethers.toUtf8Bytes("invalid"), signature: "0x1234" }],
+          [{ data, signature: "0x1234" }],
         );
 
         await expect(fastAdapter.updatePriceFeeds([invalidPayload]))
@@ -322,6 +360,26 @@ describe("FastAdapter", () => {
 
         await expect(
           fastAdapter.updatePriceFeeds([emptyPayload]),
+        ).to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
+      });
+
+      it("Should revert with disallowed program config", async () => {
+        // Disallow the test program config
+        await fastAdapter.setProgramConfig(
+          ethers.id("exec_program"),
+          ethers.id("tally_program"),
+          false,
+        );
+
+        const updateData = await createValidUpdateData(
+          trustedKey,
+          "BTC/USD",
+          50000n,
+          100n,
+        );
+
+        await expect(
+          fastAdapter.updatePriceFeeds([updateData]),
         ).to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
       });
     });
@@ -414,9 +472,14 @@ describe("FastAdapter", () => {
           deployFastAdapterFixture,
         );
 
-        // Set up trusted key and asset
+        // Set up trusted key, program config, and asset
         const trustedKey = createTrustedKey();
         await fastProver.addTrustedKey(trustedKey.address);
+        await fastAdapter.setProgramConfig(
+          ethers.id("exec_program"),
+          ethers.id("tally_program"),
+          true,
+        );
         const assetId = computeAssetId("BTC/USD");
 
         // First, update with some initial data to establish a baseline
@@ -819,6 +882,11 @@ describe("FastAdapter", () => {
 
       trustedKey = createTrustedKey();
       await fastProver.addTrustedKey(trustedKey.address);
+      await fastAdapter.setProgramConfig(
+        ethers.id("exec_program"),
+        ethers.id("tally_program"),
+        true,
+      );
       assetId = computeAssetId("BTC/USD");
     });
 
@@ -835,13 +903,13 @@ describe("FastAdapter", () => {
 
         const price = await fastAdapter.getPriceUnsafe(assetId);
         expect(price.price).to.equal(50000n);
-        expect(price.conf).to.equal(100n);
+        expect(price.conf).to.equal(0n);
         expect(price.expo).to.equal(-8);
         expect(price.publishTime).to.be.greaterThan(0);
 
         const emaPrice = await fastAdapter.getEmaPriceUnsafe(assetId);
         expect(emaPrice.price).to.equal(50000n);
-        expect(emaPrice.conf).to.equal(100n);
+        expect(emaPrice.conf).to.equal(0n);
         expect(emaPrice.expo).to.equal(-8);
         expect(emaPrice.publishTime).to.be.greaterThan(0);
 
@@ -956,6 +1024,11 @@ describe("FastAdapter", () => {
 
       trustedKey = createTrustedKey();
       await fastProver.addTrustedKey(trustedKey.address);
+      await fastAdapter.setProgramConfig(
+        ethers.id("exec_program"),
+        ethers.id("tally_program"),
+        true,
+      );
       assetId = computeAssetId("BTC/USD");
     });
 

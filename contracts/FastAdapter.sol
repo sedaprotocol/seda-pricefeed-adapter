@@ -20,15 +20,11 @@ import {FastAdapterStorage} from "./storage/FastAdapterStorage.sol";
 ///                  Oracle result validation is enforced via FastProver.
 /// @custom:upgrades UUPS upgradeable, ERC-7201 storage layout (v1).
 contract FastAdapter is BaseUpgradeable, BasePythAdapter {
-    // ============ Structs ============
+    // ============ Constants ============
 
-    /// @notice Struct containing the raw Pyth feed ID and the decoded price information.
-    /// @dev WARNING: `rawId` is the Pyth feed ID. The GLOBAL asset ID used for storage in this contract
-    ///      is computed as keccak256(abi.encode(execProgramId, tallyProgramId, rawId)).
-    struct SedaPriceUpdate {
-        bytes32 rawId;
-        PythAdapterStorage.PriceInfo priceInfo;
-    }
+    /// @notice Number of bytes per feed in the raw oracle output
+    /// @dev Each feed is encoded as: [16 zero][16-byte u128 price BE][24 zero][8-byte u64 timestamp BE]
+    uint256 private constant RAW_FEED_STRIDE = 64;
 
     // ============ Events ============
 
@@ -36,6 +32,12 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
     /// @param oldProver The previous prover contract address
     /// @param newProver The new prover contract address
     event ProverUpdated(address indexed oldProver, address indexed newProver);
+
+    /// @notice Emitted when a program config is allowed or disallowed
+    /// @param execProgramId The execution program ID
+    /// @param tallyProgramId The tally program ID
+    /// @param allowed Whether the program config is now allowed
+    event ProgramConfigUpdated(bytes32 indexed execProgramId, bytes32 indexed tallyProgramId, bool allowed);
 
     // ============ Initialization ============
 
@@ -64,12 +66,35 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
         emit ProverUpdated(oldProver, newProver);
     }
 
+    /// @notice Allows or disallows an oracle program config (owner only)
+    /// @param execProgramId The execution program ID
+    /// @param tallyProgramId The tally program ID
+    /// @param allowed Whether the program config should be allowed
+    function setProgramConfig(
+        bytes32 execProgramId,
+        bytes32 tallyProgramId,
+        bool allowed
+    ) external onlyProxy onlyOwner {
+        bytes32 key = keccak256(abi.encode(execProgramId, tallyProgramId));
+        FastAdapterStorage.layout().allowedProgramConfigs[key] = allowed;
+        emit ProgramConfigUpdated(execProgramId, tallyProgramId, allowed);
+    }
+
     // ============ Public Functions ============
 
     /// @notice Returns the SEDA prover contract address
     /// @return The address of the SEDA prover contract
     function getProver() public view returns (address) {
         return FastAdapterStorage.layout().sedaProver;
+    }
+
+    /// @notice Checks if a program config is allowed
+    /// @param execProgramId The execution program ID
+    /// @param tallyProgramId The tally program ID
+    /// @return Whether the program config is allowed
+    function isProgramConfigAllowed(bytes32 execProgramId, bytes32 tallyProgramId) public view returns (bool) {
+        bytes32 key = keccak256(abi.encode(execProgramId, tallyProgramId));
+        return FastAdapterStorage.layout().allowedProgramConfigs[key];
     }
 
     // ============ BasePythAdapter Implementation ============
@@ -118,18 +143,22 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
     /// @param updateData The update data (signed/encoded) to verify and decode
     /// @return ids GLOBAL price IDs (already mapped from raw Pyth IDs)
     /// @return infos Decoded price infos corresponding to each id
-    /// @dev Uses SEDA's FastProver to verify, decodes the batch, and maps rawId -> GLOBAL id via `_computePriceId`.
+    /// @dev Uses SEDA's FastProver to verify the SEDA FAST signature via deriveResultId,
+    ///      then decodes raw oracle output bytes using feedConfigs for metadata (rawId, expo).
     function _processUpdateData(
         bytes calldata updateData
     ) internal view override returns (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos) {
-        (FastStructs.ProgramConfig memory cfg, SedaPriceUpdate[] memory ups, ) = _verifyAndDecode(updateData);
+        (
+            FastStructs.ProgramConfig memory cfg,
+            FastStructs.FeedConfig[] memory feedConfigs,
+            PythAdapterStorage.PriceInfo[] memory priceInfos
+        ) = _verifyAndDecode(updateData);
 
-        ids = new bytes32[](ups.length);
-        infos = new PythAdapterStorage.PriceInfo[](ups.length);
+        ids = new bytes32[](feedConfigs.length);
+        infos = priceInfos;
 
-        for (uint256 i = 0; i < ups.length; ++i) {
-            ids[i] = _computePriceId(cfg, ups[i].rawId); // GLOBAL ID = keccak(exec,tally,rawId)
-            infos[i] = ups[i].priceInfo; // decoded price fields
+        for (uint256 i = 0; i < feedConfigs.length; ++i) {
+            ids[i] = _computePriceId(cfg, feedConfigs[i].rawId);
         }
     }
 
@@ -150,11 +179,11 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
         return keccak256(abi.encode(programConfig.execProgramId, programConfig.tallyProgramId, rawId));
     }
 
-    /// @notice Verifies a SignedPayload and decodes it into (ProgramConfig, PriceUpdate[], Result)
+    /// @notice Verifies a SignedPayload using SEDA FAST signature and decodes raw oracle output
     /// @param signedPayload The signed payload to verify and decode
     /// @return programConfig The program configuration
-    /// @return updates The price updates array (may contain multiple price updates for a single result)
-    /// @return result The SEDA result
+    /// @return feedConfigs The feed metadata (rawId, expo) provided by the relayer
+    /// @return priceInfos The decoded price information from raw oracle output
     function _verifyAndDecode(
         bytes calldata signedPayload
     )
@@ -162,28 +191,83 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
         view
         returns (
             FastStructs.ProgramConfig memory programConfig,
-            SedaPriceUpdate[] memory updates,
-            SedaDataTypes.Result memory result
+            FastStructs.FeedConfig[] memory feedConfigs,
+            PythAdapterStorage.PriceInfo[] memory priceInfos
         )
     {
         FastStructs.SignedPayload memory payload = abi.decode(signedPayload, (FastStructs.SignedPayload));
 
-        // Validate signature (FastProver may be paused via its own guard)
-        bytes32 dataHash = keccak256(payload.data);
-        FastProver(getProver()).verifyData(dataHash, payload.signature);
-
-        // Decode the verified data
+        // Decode the batch first (needed to compute deriveResultId)
         FastStructs.PriceUpdateBatch memory batch = abi.decode(payload.data, (FastStructs.PriceUpdateBatch));
+
+        // Verify signature against deriveResultId (matches what SEDA FAST signed)
+        bytes32 resultId = SedaDataTypes.deriveResultId(batch.result);
+        FastProver(getProver()).verifyData(resultId, payload.signature);
 
         // Validate batch outcome:
         // - exitCode == 0 implies consensus & successful tally execution
         if (batch.result.exitCode != 0) revert InvalidResult("Oracle execution failed");
 
+        // Validate the program config is allowed
         programConfig = batch.programConfig;
-        result = batch.result;
-        updates = abi.decode(batch.result.result, (SedaPriceUpdate[]));
+        bytes32 programKey = keccak256(
+            abi.encode(programConfig.execProgramId, programConfig.tallyProgramId)
+        );
+        if (!FastAdapterStorage.layout().allowedProgramConfigs[programKey]) {
+            revert InvalidResult("Program config not allowed");
+        }
+        feedConfigs = batch.feedConfigs;
 
-        // Validate updates after decoding
-        if (updates.length == 0) revert InvalidResult("No price updates found in batch");
+        // Decode raw oracle output bytes using feedConfigs
+        priceInfos = _decodeRawResult(batch.result.result, feedConfigs);
+    }
+
+    /// @notice Decodes raw oracle program output into PriceInfo structs
+    /// @param rawResult The raw bytes from the oracle program (64 bytes per feed)
+    /// @param feedConfigs Feed metadata providing expo for each feed
+    /// @return priceInfos Decoded price information
+    /// @dev Oracle output format per feed (64 bytes):
+    ///      [16 zero bytes][16-byte u128 price BE][24 zero bytes][8-byte u64 timestamp BE]
+    function _decodeRawResult(
+        bytes memory rawResult,
+        FastStructs.FeedConfig[] memory feedConfigs
+    ) private pure returns (PythAdapterStorage.PriceInfo[] memory priceInfos) {
+        if (feedConfigs.length == 0) revert InvalidResult("No feed configs provided");
+        if (rawResult.length != feedConfigs.length * RAW_FEED_STRIDE) {
+            revert InvalidResult("Result length mismatch with feed configs");
+        }
+
+        priceInfos = new PythAdapterStorage.PriceInfo[](feedConfigs.length);
+
+        for (uint256 i = 0; i < feedConfigs.length; ++i) {
+            uint256 offset = i * RAW_FEED_STRIDE;
+
+            // Extract price: u128 at bytes [offset+16..offset+32] (big-endian)
+            uint128 rawPrice;
+            // solhint-disable-next-line no-inline-assembly
+            assembly {
+                // rawResult is a bytes memory, so data starts at rawResult+32
+                // We want 16 bytes (u128) starting at offset+16
+                rawPrice := shr(128, mload(add(add(rawResult, 32), add(offset, 16))))
+            }
+
+            // Extract timestamp: u64 at bytes [offset+56..offset+64] (big-endian)
+            uint64 rawTimestamp;
+            // solhint-disable-next-line no-inline-assembly
+            assembly {
+                rawTimestamp := shr(192, mload(add(add(rawResult, 32), add(offset, 56))))
+            }
+
+            if (rawTimestamp == 0) revert InvalidResult("Zero timestamp in oracle output");
+
+            priceInfos[i] = PythAdapterStorage.PriceInfo({
+                publishTime: rawTimestamp,
+                expo: feedConfigs[i].expo,
+                price: int64(uint64(rawPrice)),
+                conf: 0,
+                emaPrice: int64(uint64(rawPrice)),
+                emaConf: 0
+            });
+        }
     }
 }

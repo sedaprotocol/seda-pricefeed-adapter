@@ -22,10 +22,20 @@ library FastStructs {
         bytes32 tallyProgramId;
     }
 
+    /// @notice Feed metadata provided by the relayer (not covered by SEDA FAST signature)
+    /// @dev Used to map raw oracle output bytes to Pyth-compatible PriceInfo structs
+    struct FeedConfig {
+        bytes32 rawId; // Pyth feed ID (e.g., USDC/USD Pyth ID)
+        int32 expo; // Price exponent (e.g., -8)
+    }
+
     /// @notice Struct for updating price feeds with multiple results
-    /// @dev Contains the execution inputs, configuration, and oracle results for batch updates
+    /// @dev Contains the program config, signed SEDA result, and unsigned feed metadata.
+    ///      Only `result` is covered by the SEDA FAST signature (via deriveResultId).
+    ///      `feedConfigs` is provided by the relayer to map raw result bytes to price feeds.
     struct PriceUpdateBatch {
         ProgramConfig programConfig;
         SedaDataTypes.Result result;
+        FeedConfig[] feedConfigs;
     }
 }

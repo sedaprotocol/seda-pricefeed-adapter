@@ -23,6 +23,8 @@ library FastAdapterStorage {
         /// @notice The oracle prover contract used for result verification
         /// @dev Generic name to support different oracle types (SEDA, Chainlink, etc.)
         address sedaProver;
+        /// @notice Allowed oracle program configs keyed by keccak256(abi.encode(execProgramId, tallyProgramId))
+        mapping(bytes32 => bool) allowedProgramConfigs;
     }
 
     // ============ Functions ============
