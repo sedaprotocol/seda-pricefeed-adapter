@@ -14,19 +14,23 @@ import {FastAdapterStorage} from "./storage/FastAdapterStorage.sol";
 /// @title FastAdapter
 /// @author Open Oracle Association
 /// @notice SEDA Price Feed Adapter implementing IPyth interface for managing SEDA oracle price feeds.
-/// @dev Verifies SEDA results using deriveResultId and looks up feed config from a drId registry.
-///      The drId is part of the signed result, so it cryptographically ties the SEDA FAST signature
-///      to specific (programConfig, feedConfigs) registered by the owner — preventing replay attacks.
+/// @dev Verifies SEDA FAST signatures over Result structs and maintains a registry of price feeds
+///      using GLOBAL IDs derived from (exec, tally, rawId). The oracle program outputs ABI-encoded
+///      SedaPriceUpdate[] containing full Pyth-compatible price data (price, conf, expo, EMA).
 ///      Uses ERC-7201 namespaced storage and UUPS upgrade pattern. Pausable for emergencies.
 /// @custom:security Inherits BaseUpgradeable and BasePythAdapter. Only the owner can perform admin actions.
 ///                  Oracle result validation is enforced via FastProver.
 /// @custom:upgrades UUPS upgradeable, ERC-7201 storage layout (v1).
 contract FastAdapter is BaseUpgradeable, BasePythAdapter {
-    // ============ Constants ============
+    // ============ Structs ============
 
-    /// @notice Number of bytes per feed in the raw oracle output
-    /// @dev Each feed is encoded as: [16 zero][16-byte u128 price BE][24 zero][8-byte u64 timestamp BE]
-    uint256 private constant RAW_FEED_STRIDE = 64;
+    /// @notice Struct containing the raw Pyth feed ID and the decoded price information.
+    /// @dev ABI-encoded by the oracle program's tally phase and decoded by this contract.
+    ///      The GLOBAL asset ID used for storage is computed as keccak256(execProgramId, tallyProgramId, rawId).
+    struct SedaPriceUpdate {
+        bytes32 rawId;
+        PythAdapterStorage.PriceInfo priceInfo;
+    }
 
     // ============ Events ============
 
@@ -67,27 +71,20 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
     }
 
     /// @notice Registers a data request configuration (owner only)
-    /// @dev The drId ties the signed result to specific program + feed configs.
-    ///      Only results with a matching drId will be accepted by the contract.
+    /// @dev The drId ties the signed result to specific program IDs.
+    ///      Only results with a registered drId will be accepted.
     /// @param drId The data request ID (derived from oracle program params)
     /// @param programConfig The execution and tally program IDs
-    /// @param feedConfigs Array of feed metadata (rawId, expo) for each price in the oracle output
     function registerDataRequest(
         bytes32 drId,
-        FastStructs.ProgramConfig calldata programConfig,
-        FastStructs.FeedConfig[] calldata feedConfigs
+        FastStructs.ProgramConfig calldata programConfig
     ) external onlyProxy onlyOwner {
-        if (feedConfigs.length == 0) revert InvalidResult("No feed configs");
+        if (programConfig.execProgramId == bytes32(0)) revert InvalidResult("execProgramId is zero");
+        if (programConfig.tallyProgramId == bytes32(0)) revert InvalidResult("tallyProgramId is zero");
 
         FastAdapterStorage.DrIdEntry storage entry = FastAdapterStorage.layout().drIdRegistry[drId];
         entry.registered = true;
         entry.programConfig = programConfig;
-
-        // Clear existing feedConfigs and set new ones
-        delete entry.feedConfigs;
-        for (uint256 i = 0; i < feedConfigs.length; ++i) {
-            entry.feedConfigs.push(feedConfigs[i]);
-        }
 
         emit DataRequestRegistered(drId, programConfig.execProgramId, programConfig.tallyProgramId);
     }
@@ -98,7 +95,6 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
         FastAdapterStorage.DrIdEntry storage entry = FastAdapterStorage.layout().drIdRegistry[drId];
         if (!entry.registered) revert InvalidResult("drId not registered");
 
-        delete entry.feedConfigs;
         entry.registered = false;
         entry.programConfig = FastStructs.ProgramConfig(bytes32(0), bytes32(0));
 
@@ -124,14 +120,6 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
         FastAdapterStorage.DrIdEntry storage entry = FastAdapterStorage.layout().drIdRegistry[drId];
         if (!entry.registered) revert InvalidResult("drId not registered");
         return entry.programConfig;
-    }
-
-    /// @notice Gets the registered feed configs for a drId
-    /// @param drId The data request ID
-    function getDataRequestFeedConfigs(bytes32 drId) public view returns (FastStructs.FeedConfig[] memory) {
-        FastAdapterStorage.DrIdEntry storage entry = FastAdapterStorage.layout().drIdRegistry[drId];
-        if (!entry.registered) revert InvalidResult("drId not registered");
-        return entry.feedConfigs;
     }
 
     // ============ BasePythAdapter Implementation ============
@@ -177,28 +165,27 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
 
     /// @notice Verifies + decodes a signed payload and returns GLOBAL price IDs with their decoded prices
     /// @param updateData The update data (SignedPayload with ABI-encoded Result + SEDA FAST signature)
-    /// @return ids GLOBAL price IDs (derived from registered programConfig + feedConfig rawIds)
-    /// @return infos Decoded price infos from raw oracle output
+    /// @return ids GLOBAL price IDs (keccak256(exec, tally, rawId))
+    /// @return infos Decoded price infos from oracle output
     function _processUpdateData(
         bytes calldata updateData
     ) internal view override returns (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos) {
-        (
-            FastStructs.ProgramConfig memory cfg,
-            FastStructs.FeedConfig[] memory feedConfigs,
-            PythAdapterStorage.PriceInfo[] memory priceInfos
-        ) = _verifyAndDecode(updateData);
+        (FastStructs.ProgramConfig memory cfg, SedaPriceUpdate[] memory ups) = _verifyAndDecode(updateData);
 
-        ids = new bytes32[](feedConfigs.length);
-        infos = priceInfos;
+        ids = new bytes32[](ups.length);
+        infos = new PythAdapterStorage.PriceInfo[](ups.length);
 
-        for (uint256 i = 0; i < feedConfigs.length; ++i) {
-            ids[i] = _computePriceId(cfg, feedConfigs[i].rawId);
+        for (uint256 i = 0; i < ups.length; ++i) {
+            ids[i] = _computePriceId(cfg, ups[i].rawId);
+            infos[i] = ups[i].priceInfo;
         }
     }
 
     // ============ SEDA-Specific Implementation ============
 
     /// @notice Computes the global price ID from SEDA program configuration and raw feed ID
+    /// @dev The global price ID is keccak256(abi.encode(execProgramId, tallyProgramId, rawId)).
+    ///      This namespaces feeds by oracle program, allowing different programs to coexist.
     function _computePriceId(
         FastStructs.ProgramConfig memory programConfig,
         bytes32 rawId
@@ -206,23 +193,19 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
         return keccak256(abi.encode(programConfig.execProgramId, programConfig.tallyProgramId, rawId));
     }
 
-    /// @notice Verifies a SignedPayload using SEDA FAST signature and decodes raw oracle output
+    /// @notice Verifies a SignedPayload using SEDA FAST signature and decodes ABI-encoded oracle output
     /// @dev Flow:
     ///      1. Decode SignedPayload { data (ABI-encoded Result), signature }
     ///      2. Decode data as SedaDataTypes.Result
     ///      3. Verify signature against deriveResultId(result) via FastProver
-    ///      4. Look up result.drId in registry → get programConfig + feedConfigs
-    ///      5. Decode raw oracle output using registered feedConfigs
+    ///      4. Look up result.drId in registry → get programConfig
+    ///      5. ABI-decode result.result as SedaPriceUpdate[]
     function _verifyAndDecode(
         bytes calldata signedPayload
     )
         private
         view
-        returns (
-            FastStructs.ProgramConfig memory programConfig,
-            FastStructs.FeedConfig[] memory feedConfigs,
-            PythAdapterStorage.PriceInfo[] memory priceInfos
-        )
+        returns (FastStructs.ProgramConfig memory programConfig, SedaPriceUpdate[] memory updates)
     {
         FastStructs.SignedPayload memory payload = abi.decode(signedPayload, (FastStructs.SignedPayload));
 
@@ -236,61 +219,14 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
         // Validate execution succeeded
         if (result.exitCode != 0) revert InvalidResult("Oracle execution failed");
 
-        // Look up drId in registry — this ties the signed result to specific program + feed configs
+        // Look up drId in registry
         FastAdapterStorage.DrIdEntry storage entry = FastAdapterStorage.layout().drIdRegistry[result.drId];
         if (!entry.registered) revert InvalidResult("drId not registered");
 
         programConfig = entry.programConfig;
-        feedConfigs = entry.feedConfigs;
 
-        // Decode raw oracle output bytes using registered feedConfigs
-        priceInfos = _decodeRawResult(result.result, feedConfigs);
-    }
-
-    /// @notice Decodes raw oracle program output into PriceInfo structs
-    /// @param rawResult The raw bytes from the oracle program (64 bytes per feed)
-    /// @param feedConfigs Feed metadata providing expo for each feed
-    /// @return priceInfos Decoded price information
-    /// @dev Oracle output format per feed (64 bytes):
-    ///      [16 zero bytes][16-byte u128 price BE][24 zero bytes][8-byte u64 timestamp BE]
-    function _decodeRawResult(
-        bytes memory rawResult,
-        FastStructs.FeedConfig[] memory feedConfigs
-    ) private pure returns (PythAdapterStorage.PriceInfo[] memory priceInfos) {
-        if (feedConfigs.length == 0) revert InvalidResult("No feed configs");
-        if (rawResult.length != feedConfigs.length * RAW_FEED_STRIDE) {
-            revert InvalidResult("Result length mismatch with feed configs");
-        }
-
-        priceInfos = new PythAdapterStorage.PriceInfo[](feedConfigs.length);
-
-        for (uint256 i = 0; i < feedConfigs.length; ++i) {
-            uint256 offset = i * RAW_FEED_STRIDE;
-
-            // Extract price: u128 at bytes [offset+16..offset+32] (big-endian)
-            uint128 rawPrice;
-            // solhint-disable-next-line no-inline-assembly
-            assembly {
-                rawPrice := shr(128, mload(add(add(rawResult, 32), add(offset, 16))))
-            }
-
-            // Extract timestamp: u64 at bytes [offset+56..offset+64] (big-endian)
-            uint64 rawTimestamp;
-            // solhint-disable-next-line no-inline-assembly
-            assembly {
-                rawTimestamp := shr(192, mload(add(add(rawResult, 32), add(offset, 56))))
-            }
-
-            if (rawTimestamp == 0) revert InvalidResult("Zero timestamp in oracle output");
-
-            priceInfos[i] = PythAdapterStorage.PriceInfo({
-                publishTime: rawTimestamp,
-                expo: feedConfigs[i].expo,
-                price: int64(uint64(rawPrice)),
-                conf: 0,
-                emaPrice: int64(uint64(rawPrice)),
-                emaConf: 0
-            });
-        }
+        // ABI-decode the oracle program's tally output as SedaPriceUpdate[]
+        updates = abi.decode(result.result, (SedaPriceUpdate[]));
+        if (updates.length == 0) revert InvalidResult("No price updates found in batch");
     }
 }

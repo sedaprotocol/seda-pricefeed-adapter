@@ -7,6 +7,10 @@ const RESULT_ABI_TYPE =
 
 const SIGNED_PAYLOAD_ABI_TYPE = "tuple(bytes data, bytes signature)";
 
+// ABI type for SedaPriceUpdate[] — matches the oracle program's tally output
+const SEDA_PRICE_UPDATE_ARRAY_TYPE =
+  "tuple(bytes32 rawId,tuple(uint64 publishTime,int32 expo,int64 price,uint64 conf,int64 emaPrice,uint64 emaConf) priceInfo)[]";
+
 // SEDA protocol version (must match SedaDataTypes.VERSION)
 const SEDA_VERSION = "0.0.1";
 
@@ -65,48 +69,24 @@ export function deriveResultId(result: {
 }
 
 /**
- * Encodes a price + timestamp into the raw 64-byte oracle output format:
- * [16 zero bytes][16-byte u128 price BE][24 zero bytes][8-byte u64 timestamp BE]
+ * ABI-encodes a SedaPriceUpdate[] — matching the oracle program's tally output.
  */
-export function encodeRawOracleOutput(
-  price: bigint,
-  timestamp: number,
+export function encodeSedaPriceUpdates(
+  updates: Array<{
+    rawId: string;
+    priceInfo: {
+      publishTime: number;
+      expo: number;
+      price: bigint;
+      conf: bigint;
+      emaPrice: bigint;
+      emaConf: bigint;
+    };
+  }>,
 ): string {
-  const pricePadded = ethers.zeroPadValue(ethers.toBeHex(price), 32);
-  const timestampPadded = ethers.zeroPadValue(ethers.toBeHex(timestamp), 32);
-  return ethers.concat([pricePadded, timestampPadded]);
-}
-
-/**
- * Computes the drId for a given set of request parameters.
- * This must match what SEDA FAST uses (SedaDataTypes.deriveRequestId).
- */
-export function computeDrId(params: {
-  execProgramId: string;
-  tallyProgramId: string;
-  execInputs: string;
-  tallyInputs: string;
-  execGasLimit: bigint;
-  tallyGasLimit: bigint;
-  replicationFactor: number;
-  consensusFilter: string;
-  gasPrice: bigint;
-  memo: string;
-}): string {
-  return ethers.keccak256(
-    ethers.concat([
-      ethers.keccak256(ethers.toUtf8Bytes(SEDA_VERSION)),
-      params.execProgramId,
-      ethers.keccak256(params.execInputs),
-      ethers.zeroPadValue(ethers.toBeHex(params.execGasLimit), 8),
-      params.tallyProgramId,
-      ethers.keccak256(params.tallyInputs),
-      ethers.zeroPadValue(ethers.toBeHex(params.tallyGasLimit), 8),
-      ethers.zeroPadValue(ethers.toBeHex(params.replicationFactor), 2),
-      ethers.keccak256(params.consensusFilter),
-      ethers.zeroPadValue(ethers.toBeHex(params.gasPrice), 16),
-      ethers.keccak256(ethers.toUtf8Bytes(params.memo)),
-    ]),
+  return ethers.AbiCoder.defaultAbiCoder().encode(
+    [SEDA_PRICE_UPDATE_ARRAY_TYPE],
+    [updates],
   );
 }
 
@@ -117,6 +97,7 @@ export async function submitPriceUpdate(
   },
   trustedKey: Wallet,
   drId: string,
+  rawId: string,
   price: bigint,
   conf: bigint,
   publishTime: number = Math.floor(Date.now() / 1000),
@@ -124,6 +105,7 @@ export async function submitPriceUpdate(
   const updateData = await createValidUpdateData(
     trustedKey,
     drId,
+    rawId,
     price,
     conf,
     publishTime,
@@ -131,116 +113,103 @@ export async function submitPriceUpdate(
   await adapter.updatePriceFeeds([updateData]);
 }
 
-// Helper function to create valid update data
+// Helper function to create valid update data with ABI-encoded SedaPriceUpdate[]
 export async function createValidUpdateData(
   trustedKey: Wallet,
   drId: string,
+  rawId: string,
   price: bigint,
   conf: bigint,
   publishTime: number = Math.floor(Date.now() / 1000),
+  expo: number = -8,
 ): Promise<string> {
-  // Encode price + timestamp into raw 64-byte oracle output
-  const rawResult = encodeRawOracleOutput(price, publishTime);
+  const resultBytes = encodeSedaPriceUpdates([
+    {
+      rawId,
+      priceInfo: {
+        publishTime,
+        expo,
+        price,
+        conf,
+        emaPrice: price,
+        emaConf: conf,
+      },
+    },
+  ]);
 
   const result = {
     drId,
     gasUsed: 100000,
-    blockHeight: 12345,
+    blockHeight: 0,
     blockTimestamp: publishTime,
     consensus: true,
     exitCode: 0,
     version: SEDA_VERSION,
-    result: rawResult,
+    result: resultBytes,
     paybackAddress: "0x",
     sedaPayload: "0x",
   };
 
-  // ABI-encode just the Result (no more PriceUpdateBatch wrapper)
-  const data = ethers.AbiCoder.defaultAbiCoder().encode(
-    [RESULT_ABI_TYPE],
-    [result],
-  );
-
-  // Sign with deriveResultId (matches what SEDA FAST signs)
-  const resultIdHash = deriveResultId(result);
-  const signature = trustedKey.signingKey.sign(resultIdHash);
-  const serializedSignature = ethers.Signature.from(signature).serialized;
-
-  return ethers.AbiCoder.defaultAbiCoder().encode(
-    [SIGNED_PAYLOAD_ABI_TYPE],
-    [{ data, signature: serializedSignature }],
-  );
+  return encodeAndSign(result, trustedKey);
 }
 
 // Helper function to create invalid exit code payload
 export async function createInvalidExitCodePayload(
   trustedKey: Wallet,
   drId: string,
+  rawId: string,
 ): Promise<string> {
-  const rawResult = encodeRawOracleOutput(
-    50000n,
-    Math.floor(Date.now() / 1000),
-  );
+  const resultBytes = encodeSedaPriceUpdates([
+    {
+      rawId,
+      priceInfo: {
+        publishTime: Math.floor(Date.now() / 1000),
+        expo: -8,
+        price: 50000n,
+        conf: 100n,
+        emaPrice: 50000n,
+        emaConf: 100n,
+      },
+    },
+  ]);
 
   const result = {
     drId,
     gasUsed: 100000,
-    blockHeight: 12345,
+    blockHeight: 0,
     blockTimestamp: Math.floor(Date.now() / 1000),
     consensus: true,
     exitCode: 1, // Invalid exit code
     version: SEDA_VERSION,
-    result: rawResult,
+    result: resultBytes,
     paybackAddress: "0x",
     sedaPayload: "0x",
   };
 
-  const data = ethers.AbiCoder.defaultAbiCoder().encode(
-    [RESULT_ABI_TYPE],
-    [result],
-  );
-
-  const resultIdHash = deriveResultId(result);
-  const signature = trustedKey.signingKey.sign(resultIdHash);
-  const serializedSignature = ethers.Signature.from(signature).serialized;
-
-  return ethers.AbiCoder.defaultAbiCoder().encode(
-    [SIGNED_PAYLOAD_ABI_TYPE],
-    [{ data, signature: serializedSignature }],
-  );
+  return encodeAndSign(result, trustedKey);
 }
 
-// Helper function to create empty batch payload (0 feeds, 0-length result)
+// Helper function to create empty batch payload (0 feeds)
 export async function createEmptyBatchPayload(
   trustedKey: Wallet,
   drId: string,
 ): Promise<string> {
+  const resultBytes = encodeSedaPriceUpdates([]); // Empty array
+
   const result = {
     drId,
     gasUsed: 100000,
-    blockHeight: 12345,
+    blockHeight: 0,
     blockTimestamp: Math.floor(Date.now() / 1000),
     consensus: true,
     exitCode: 0,
     version: SEDA_VERSION,
-    result: "0x",
+    result: resultBytes,
     paybackAddress: "0x",
     sedaPayload: "0x",
   };
 
-  const data = ethers.AbiCoder.defaultAbiCoder().encode(
-    [RESULT_ABI_TYPE],
-    [result],
-  );
-
-  const resultIdHash = deriveResultId(result);
-  const signature = trustedKey.signingKey.sign(resultIdHash);
-  const serializedSignature = ethers.Signature.from(signature).serialized;
-
-  return ethers.AbiCoder.defaultAbiCoder().encode(
-    [SIGNED_PAYLOAD_ABI_TYPE],
-    [{ data, signature: serializedSignature }],
-  );
+  return encodeAndSign(result, trustedKey);
 }
 
 // Helper function to compute asset ID (GLOBAL price ID)
@@ -260,4 +229,35 @@ export function computeAssetId(
 // Helper function to create a past timestamp
 export function createPastTimestamp(secondsAgo: number = 10): number {
   return Math.floor(Date.now() / 1000) - secondsAgo;
+}
+
+// Internal: encode Result and sign with deriveResultId
+function encodeAndSign(
+  result: {
+    drId: string;
+    gasUsed: number | bigint;
+    blockHeight: number | bigint;
+    blockTimestamp: number | bigint;
+    consensus: boolean;
+    exitCode: number;
+    version: string;
+    result: string;
+    paybackAddress: string;
+    sedaPayload: string;
+  },
+  trustedKey: Wallet,
+): string {
+  const data = ethers.AbiCoder.defaultAbiCoder().encode(
+    [RESULT_ABI_TYPE],
+    [result],
+  );
+
+  const resultIdHash = deriveResultId(result);
+  const signature = trustedKey.signingKey.sign(resultIdHash);
+  const serializedSignature = ethers.Signature.from(signature).serialized;
+
+  return ethers.AbiCoder.defaultAbiCoder().encode(
+    [SIGNED_PAYLOAD_ABI_TYPE],
+    [{ data, signature: serializedSignature }],
+  );
 }

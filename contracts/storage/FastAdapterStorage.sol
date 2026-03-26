@@ -24,17 +24,16 @@ library FastAdapterStorage {
     struct Layout {
         /// @notice The oracle prover contract used for result verification
         address sedaProver;
-        /// @notice Registered data request configs keyed by drId
-        /// @dev drId is part of the signed result, tying the signature to specific program + feed configs
+        /// @notice Maps a SEDA data request ID (drId) to its program configuration
+        /// @dev The drId is part of the signed result, tying the signature to specific program IDs.
+        ///      Must be registered by the owner before submitting results for a given drId.
         mapping(bytes32 => DrIdEntry) drIdRegistry;
     }
 
     /// @notice Storage entry for a registered drId
-    /// @dev Uses a separate struct because mappings with dynamic arrays need careful handling
     struct DrIdEntry {
         bool registered;
         FastStructs.ProgramConfig programConfig;
-        FastStructs.FeedConfig[] feedConfigs;
     }
 
     // ============ Functions ============

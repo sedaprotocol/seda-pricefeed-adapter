@@ -1,10 +1,8 @@
 import { ethers, upgrades, network } from "hardhat";
 
-// USDC/USD feed config
-const EXEC_PROGRAM_ID = "0xb5ace2e5ad3bd8014b15310cb6f6d969c4af25aa527d8051209f139b191121de";
+// Oracle program config (pyth-hermes-fast deployed to SEDA testnet)
+const EXEC_PROGRAM_ID = "0xfbec1463d982f85bfe1f316015e401b943f8ca6ec9c644944104d15e32c1fba7";
 const TALLY_PROGRAM_ID = EXEC_PROGRAM_ID;
-const USDC_RAW_ID = "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a";
-const USDC_EXPO = -8;
 
 // SEDA FAST testnet signer
 const SEDA_FAST_ADDRESS = "0x593CEBb17C116D48d69b108711f2D8C419ed8758";
@@ -79,12 +77,11 @@ async function main() {
       const drId = "0x" + data.data.dataResult.drId;
       console.log(`  drId: ${drId}`);
 
-      // 5. Register the data request with feed config
+      // 5. Register the data request with program config
       console.log("  Registering data request...");
       const tx2 = await fastAdapter.registerDataRequest(
         drId,
         { execProgramId: EXEC_PROGRAM_ID, tallyProgramId: TALLY_PROGRAM_ID },
-        [{ rawId: USDC_RAW_ID, expo: USDC_EXPO }],
       );
       await tx2.wait();
       console.log("  Data request registered!");

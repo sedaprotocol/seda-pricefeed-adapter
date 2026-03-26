@@ -18,9 +18,6 @@ import { createTrustedKey } from "../helpers/proverHelpers";
 const EXEC_PROGRAM_ID = ethers.id("exec_program");
 const TALLY_PROGRAM_ID = ethers.id("tally_program");
 
-// Standard drId for tests (deterministic for the test program params)
-const TEST_DR_ID = ethers.id("test_dr_id");
-
 describe("FastAdapter", () => {
   // Fixture function
   async function deployFastAdapterFixture() {
@@ -43,18 +40,12 @@ describe("FastAdapter", () => {
     return { fastAdapter, fastProver, owner, user };
   }
 
-  // Helper to register a feed with a given drId, rawId, and expo
-  async function registerFeed(
-    adapter: FastAdapter,
-    drId: string,
-    rawId: string,
-    expo: number = -8,
-  ) {
-    await adapter.registerDataRequest(
-      drId,
-      { execProgramId: EXEC_PROGRAM_ID, tallyProgramId: TALLY_PROGRAM_ID },
-      [{ rawId, expo }],
-    );
+  // Helper to register a drId with program config
+  async function registerDrId(adapter: FastAdapter, drId: string) {
+    await adapter.registerDataRequest(drId, {
+      execProgramId: EXEC_PROGRAM_ID,
+      tallyProgramId: TALLY_PROGRAM_ID,
+    });
   }
 
   describe("Initialization", () => {
@@ -155,16 +146,14 @@ describe("FastAdapter", () => {
     describe("Data Request Registry", () => {
       it("Should allow owner to register and unregister data requests", async () => {
         const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
-        const drId = TEST_DR_ID;
-        const rawId = ethers.id("BTC/USD");
+        const drId = ethers.id("test_dr_id");
 
         // Register
         await expect(
-          fastAdapter.registerDataRequest(
-            drId,
-            { execProgramId: EXEC_PROGRAM_ID, tallyProgramId: TALLY_PROGRAM_ID },
-            [{ rawId, expo: -8 }],
-          ),
+          fastAdapter.registerDataRequest(drId, {
+            execProgramId: EXEC_PROGRAM_ID,
+            tallyProgramId: TALLY_PROGRAM_ID,
+          }),
         ).to.emit(fastAdapter, "DataRequestRegistered");
 
         expect(await fastAdapter.isDataRequestRegistered(drId)).to.be.true;
@@ -183,11 +172,10 @@ describe("FastAdapter", () => {
           deployFastAdapterFixture,
         );
         await expect(
-          fastAdapter.connect(user).registerDataRequest(
-            TEST_DR_ID,
-            { execProgramId: EXEC_PROGRAM_ID, tallyProgramId: TALLY_PROGRAM_ID },
-            [{ rawId: ethers.id("BTC/USD"), expo: -8 }],
-          ),
+          fastAdapter.connect(user).registerDataRequest(ethers.id("test"), {
+            execProgramId: EXEC_PROGRAM_ID,
+            tallyProgramId: TALLY_PROGRAM_ID,
+          }),
         ).to.be.revertedWithCustomError(
           fastAdapter,
           "OwnableUnauthorizedAccount",
@@ -197,7 +185,27 @@ describe("FastAdapter", () => {
       it("Should revert when unregistering non-existent drId", async () => {
         const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
         await expect(
-          fastAdapter.unregisterDataRequest(TEST_DR_ID),
+          fastAdapter.unregisterDataRequest(ethers.id("nonexistent")),
+        ).to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
+      });
+
+      it("Should revert when registering with zero execProgramId", async () => {
+        const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
+        await expect(
+          fastAdapter.registerDataRequest(ethers.id("test"), {
+            execProgramId: ethers.ZeroHash,
+            tallyProgramId: TALLY_PROGRAM_ID,
+          }),
+        ).to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
+      });
+
+      it("Should revert when registering with zero tallyProgramId", async () => {
+        const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
+        await expect(
+          fastAdapter.registerDataRequest(ethers.id("test"), {
+            execProgramId: EXEC_PROGRAM_ID,
+            tallyProgramId: ethers.ZeroHash,
+          }),
         ).to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
       });
     });
@@ -247,10 +255,10 @@ describe("FastAdapter", () => {
       trustedKey = createTrustedKey();
       await fastProver.addTrustedKey(trustedKey.address);
 
-      // Register BTC/USD feed with a known drId
+      // Register BTC/USD feed
       btcDrId = ethers.id("btc_dr_id");
       btcRawId = ethers.id("BTC/USD");
-      await registerFeed(fastAdapter, btcDrId, btcRawId);
+      await registerDrId(fastAdapter, btcDrId);
       btcAssetId = computeAssetId(EXEC_PROGRAM_ID, TALLY_PROGRAM_ID, btcRawId);
     });
 
@@ -259,6 +267,7 @@ describe("FastAdapter", () => {
         const updateData = await createValidUpdateData(
           trustedKey,
           btcDrId,
+          btcRawId,
           50000n,
           100n,
         );
@@ -270,18 +279,18 @@ describe("FastAdapter", () => {
 
         const price = await fastAdapter.getPriceUnsafe(btcAssetId);
         expect(price.price).to.equal(50000n);
-        expect(price.conf).to.equal(0n);
+        expect(price.conf).to.equal(100n);
       });
 
       it("Should handle multiple updates in batch", async () => {
         // Register ETH feed
         const ethDrId = ethers.id("eth_dr_id");
         const ethRawId = ethers.id("ETH/USD");
-        await registerFeed(fastAdapter, ethDrId, ethRawId);
+        await registerDrId(fastAdapter, ethDrId);
         const ethAssetId = computeAssetId(EXEC_PROGRAM_ID, TALLY_PROGRAM_ID, ethRawId);
 
-        const btcData = await createValidUpdateData(trustedKey, btcDrId, 50000n, 100n);
-        const ethData = await createValidUpdateData(trustedKey, ethDrId, 3000n, 50n);
+        const btcData = await createValidUpdateData(trustedKey, btcDrId, btcRawId, 50000n, 100n);
+        const ethData = await createValidUpdateData(trustedKey, ethDrId, ethRawId, 3000n, 50n);
 
         await fastAdapter.updatePriceFeeds([btcData, ethData]);
 
@@ -293,14 +302,14 @@ describe("FastAdapter", () => {
       });
 
       it("Should update existing price with newer timestamp", async () => {
-        await submitPriceUpdate(fastAdapter, trustedKey, btcDrId, 50000n, 100n);
+        await submitPriceUpdate(fastAdapter, trustedKey, btcDrId, btcRawId, 50000n, 100n);
 
         const assetIds = await fastAdapter.getAssetIds();
         const assetId = assetIds[0];
         const initialPriceInfo = await fastAdapter.getPriceInfo(assetId);
 
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        await submitPriceUpdate(fastAdapter, trustedKey, btcDrId, 51000n, 120n);
+        await submitPriceUpdate(fastAdapter, trustedKey, btcDrId, btcRawId, 51000n, 120n);
 
         const updatedPriceInfo = await fastAdapter.getPriceInfo(assetId);
         expect(updatedPriceInfo.price).to.equal(51000n);
@@ -311,7 +320,7 @@ describe("FastAdapter", () => {
 
       it("Should revert when paused", async () => {
         await fastAdapter.pause();
-        const updateData = await createValidUpdateData(trustedKey, btcDrId, 50000n, 100n);
+        const updateData = await createValidUpdateData(trustedKey, btcDrId, btcRawId, 50000n, 100n);
 
         await expect(
           fastAdapter.updatePriceFeeds([updateData]),
@@ -319,16 +328,15 @@ describe("FastAdapter", () => {
       });
 
       it("Should revert with invalid exit code", async () => {
-        const invalidPayload = await createInvalidExitCodePayload(trustedKey, btcDrId);
+        const invalidPayload = await createInvalidExitCodePayload(trustedKey, btcDrId, btcRawId);
 
         await expect(
           fastAdapter.updatePriceFeeds([invalidPayload]),
         ).to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
       });
 
-      it("Should revert with empty batch (unregistered drId with no result)", async () => {
-        const unregisteredDrId = ethers.id("unregistered");
-        const emptyPayload = await createEmptyBatchPayload(trustedKey, unregisteredDrId);
+      it("Should revert with empty batch", async () => {
+        const emptyPayload = await createEmptyBatchPayload(trustedKey, btcDrId);
 
         await expect(
           fastAdapter.updatePriceFeeds([emptyPayload]),
@@ -340,6 +348,7 @@ describe("FastAdapter", () => {
         const updateData = await createValidUpdateData(
           trustedKey,
           unregisteredDrId,
+          btcRawId,
           50000n,
           100n,
         );
@@ -350,15 +359,14 @@ describe("FastAdapter", () => {
       });
 
       it("Should prevent replay: same result cannot update a different feed", async () => {
-        // Register another feed with a different drId
         const ethDrId = ethers.id("eth_dr_id");
         const ethRawId = ethers.id("ETH/USD");
-        await registerFeed(fastAdapter, ethDrId, ethRawId);
+        await registerDrId(fastAdapter, ethDrId);
 
         // Create an update for BTC
-        const btcUpdate = await createValidUpdateData(trustedKey, btcDrId, 50000n, 100n);
+        const btcUpdate = await createValidUpdateData(trustedKey, btcDrId, btcRawId, 50000n, 100n);
 
-        // The BTC update has drId=btcDrId, so it can only update the BTC feed
+        // The BTC update has drId=btcDrId, so it only updates BTC feed
         await fastAdapter.updatePriceFeeds([btcUpdate]);
 
         // ETH feed should not be updated
@@ -374,9 +382,9 @@ describe("FastAdapter", () => {
         const oldTime = createPastTimestamp(3600);
         const newTime = Math.floor(Date.now() / 1000);
 
-        await submitPriceUpdate(fastAdapter, trustedKey, btcDrId, 40000n, 100n, oldTime);
+        await submitPriceUpdate(fastAdapter, trustedKey, btcDrId, btcRawId, 40000n, 100n, oldTime);
 
-        const updateData = await createValidUpdateData(trustedKey, btcDrId, 50000n, 100n, newTime);
+        const updateData = await createValidUpdateData(trustedKey, btcDrId, btcRawId, 50000n, 100n, newTime);
 
         await fastAdapter.updatePriceFeedsIfNecessary(
           [updateData],
@@ -392,9 +400,9 @@ describe("FastAdapter", () => {
         const oldTime = createPastTimestamp(3600);
         const newerTime = Math.floor(Date.now() / 1000);
 
-        await submitPriceUpdate(fastAdapter, trustedKey, btcDrId, 50000n, 100n, newerTime);
+        await submitPriceUpdate(fastAdapter, trustedKey, btcDrId, btcRawId, 50000n, 100n, newerTime);
 
-        const updateData = await createValidUpdateData(trustedKey, btcDrId, 40000n, 100n, oldTime);
+        const updateData = await createValidUpdateData(trustedKey, btcDrId, btcRawId, 40000n, 100n, oldTime);
 
         await expect(
           fastAdapter.updatePriceFeedsIfNecessary(
@@ -409,7 +417,7 @@ describe("FastAdapter", () => {
     describe("parsePriceFeedUpdates*", () => {
       it("Should parse price feed updates", async () => {
         const pastTime = createPastTimestamp(1800);
-        const updateData = await createValidUpdateData(trustedKey, btcDrId, 50000n, 100n, pastTime);
+        const updateData = await createValidUpdateData(trustedKey, btcDrId, btcRawId, 50000n, 100n, pastTime);
 
         const priceFeeds = await fastAdapter.parsePriceFeedUpdates.staticCall(
           [updateData],
@@ -424,7 +432,7 @@ describe("FastAdapter", () => {
       });
 
       it("Should parse with configuration and store updates", async () => {
-        const updateData = await createValidUpdateData(trustedKey, btcDrId, 50000n, 100n);
+        const updateData = await createValidUpdateData(trustedKey, btcDrId, btcRawId, 50000n, 100n);
 
         const [priceFeeds, slots] =
           await fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
@@ -446,7 +454,7 @@ describe("FastAdapter", () => {
 
       it("Should revert when paused and trying to store", async () => {
         await fastAdapter.pause();
-        const updateData = await createValidUpdateData(trustedKey, btcDrId, 50000n, 100n);
+        const updateData = await createValidUpdateData(trustedKey, btcDrId, btcRawId, 50000n, 100n);
 
         await expect(
           fastAdapter.parsePriceFeedUpdatesWithConfig(
@@ -468,6 +476,7 @@ describe("FastAdapter", () => {
     let fastProver: FastProver;
     let trustedKey: Wallet;
     let btcDrId: string;
+    let btcRawId: string;
     let btcAssetId: string;
 
     beforeEach(async () => {
@@ -479,23 +488,24 @@ describe("FastAdapter", () => {
       await fastProver.addTrustedKey(trustedKey.address);
 
       btcDrId = ethers.id("btc_dr_id");
-      const btcRawId = ethers.id("BTC/USD");
-      await registerFeed(fastAdapter, btcDrId, btcRawId);
+      btcRawId = ethers.id("BTC/USD");
+      await registerDrId(fastAdapter, btcDrId);
       btcAssetId = computeAssetId(EXEC_PROGRAM_ID, TALLY_PROGRAM_ID, btcRawId);
     });
 
     describe("Price Retrieval Functions", () => {
       it("Should return prices for existing assets and revert for non-existent ones", async () => {
-        await submitPriceUpdate(fastAdapter, trustedKey, btcDrId, 50000n, 100n);
+        await submitPriceUpdate(fastAdapter, trustedKey, btcDrId, btcRawId, 50000n, 100n);
 
         const price = await fastAdapter.getPriceUnsafe(btcAssetId);
         expect(price.price).to.equal(50000n);
-        expect(price.conf).to.equal(0n);
+        expect(price.conf).to.equal(100n);
         expect(price.expo).to.equal(-8);
         expect(price.publishTime).to.be.greaterThan(0);
 
         const emaPrice = await fastAdapter.getEmaPriceUnsafe(btcAssetId);
         expect(emaPrice.price).to.equal(50000n);
+        expect(emaPrice.conf).to.equal(100n);
 
         const nonExistentId = ethers.id("non_existent");
         await expect(
@@ -507,7 +517,7 @@ describe("FastAdapter", () => {
     describe("Age-Limited Price Functions", () => {
       it("Should return prices within age limits", async () => {
         const pastTime = createPastTimestamp(10);
-        await submitPriceUpdate(fastAdapter, trustedKey, btcDrId, 50000n, 100n, pastTime);
+        await submitPriceUpdate(fastAdapter, trustedKey, btcDrId, btcRawId, 50000n, 100n, pastTime);
 
         const price = await fastAdapter.getPriceNoOlderThan(btcAssetId, 86400);
         expect(price.price).to.equal(50000n);
@@ -515,7 +525,7 @@ describe("FastAdapter", () => {
 
       it("Should revert for stale prices", async () => {
         const oldTime = createPastTimestamp(3700);
-        await submitPriceUpdate(fastAdapter, trustedKey, btcDrId, 50000n, 100n, oldTime);
+        await submitPriceUpdate(fastAdapter, trustedKey, btcDrId, btcRawId, 50000n, 100n, oldTime);
 
         await expect(fastAdapter.getPriceNoOlderThan(btcAssetId, 3600))
           .to.be.revertedWithCustomError(fastAdapter, "StalePrice");
@@ -544,10 +554,10 @@ describe("FastAdapter", () => {
 
       const drId = ethers.id("btc_dr_id");
       const rawId = ethers.id("BTC/USD");
-      await registerFeed(fastAdapter, drId, rawId);
+      await registerDrId(fastAdapter, drId);
       const assetId = computeAssetId(EXEC_PROGRAM_ID, TALLY_PROGRAM_ID, rawId);
 
-      const updateData = await createValidUpdateData(trustedKey, drId, 50000n, 100n);
+      const updateData = await createValidUpdateData(trustedKey, drId, rawId, 50000n, 100n);
 
       await expect(
         fastAdapter.updatePriceFeeds([updateData], { value: ethers.parseEther("1") }),
