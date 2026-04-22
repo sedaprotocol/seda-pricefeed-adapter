@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {BaseUpgradeable} from "./base/BaseUpgradeable.sol";
 import {BasePythAdapter} from "./base/BasePythAdapter.sol";
 import {FastProver} from "./provers/FastProver.sol";
-import {SedaDataTypes} from "@seda-protocol/evm/contracts/libraries/SedaDataTypes.sol";
+import {SedaDataTypes} from "./libraries/SedaDataTypes.sol";
 import {PythStructs} from "./interfaces/pyth/PythStructs.sol";
 
 import {PythAdapterStorage} from "./storage/PythAdapterStorage.sol";

@@ -1,226 +1,116 @@
 # SEDA PriceFeedAdapter
 
-A lightweight, modular price feed system that integrates with the [SEDA Protocol](https://www.seda.xyz/) oracle network. This project provides AggregatorV3Interface-compatible price feeds verified by SEDA's cryptographic proofs.
+A Pyth-compatible price feed adapter for the [SEDA Protocol](https://www.seda.xyz/) FAST oracle path. SEDA FAST signs oracle results with ECDSA, and this adapter verifies those signatures on-chain and exposes the resulting prices through the standard `IPyth` interface.
 
-For detailed technical specifications, see [DESIGN.md](DESIGN.md).
+For architecture details, see [DESIGN.md](DESIGN.md).
 
-## 🏗️ Project Overview
+## Overview
 
-The **PriceFeedAdapter** creates and manages on-chain price feeds that are automatically updated when SEDA oracle results are submitted. It uses a proxy-based architecture for gas efficiency and supports batch processing of multiple price feeds.
+The **FastAdapter** (`contracts/FastAdapter.sol`) accepts signed SEDA FAST oracle results, verifies them through the **FastProver** (`contracts/provers/FastProver.sol`), and writes per-feed prices into namespaced storage keyed by `feedId`. Clients read prices through the Pyth interface (`getPriceUnsafe`, `getPriceNoOlderThan`, `parsePriceFeedUpdates`, ...).
 
-## ✨ Key Features
+Both contracts are UUPS-upgradeable and use ERC-7201 namespaced storage.
 
-- **AggregatorV3Interface Compatible**: Seamless integration with DeFi protocols
-- **Automatic Feed Creation**: Price feeds are deployed on-demand when first referenced
-- **Batch Processing**: Update multiple price feeds in a single transaction
-- **Gas Optimized**: Uses EIP-1167 minimal proxies for efficient deployment
-- **Upgradeable**: UUPS upgradeable pattern with ERC-7201 storage layout
-- **Emergency Controls**: Global pause functionality for all operations
+## Feed identity
 
-## 🚀 Quick Start
+```
+feedId = keccak256(abi.encode(drId, symbolId))
+```
 
-### Prerequisites
-- Node.js 18+ 
-- Bun (recommended) or npm
-- Git
+- `drId` is the SEDA data request id. It commits to the oracle program (exec + tally) and the full `execInputs` (including the batch symbol list).
+- `symbolId` is the per-symbol identifier carried in each `SedaPriceUpdate` entry (for Pyth-compatible deployments, this is the Pyth price feed id).
 
-### Installation
+This shape is interim: changing the batch (adding or removing a symbol) changes the `drId` and therefore rekeys every feed. Consumers integrating this version effectively hard-code a fixed batch.
+
+## Prerequisites
+
+- [Bun](https://bun.sh)
+- `DEPLOYER_PRIVATE_KEY` for testnet deploys, `BASESCAN_API_KEY` for Base Sepolia verification (see `hardhat.config.ts`)
+
+## Quick start
 
 ```bash
-git clone <repository-url>
-cd pricefeed-adapter
 bun install
-```
-
-### Environment Setup
-
-Create a `.env` file with your configuration:
-
-```env
-# Block explorer API key (for contract verification)
-ETHERSCAN_API_KEY=your_etherscan_key
-```
-
-### 🛠️ Deployment
-
-Deploy the PriceFeedAdapter using the hardhat task:
-
-```bash
-# Deploy to network
-bunx hardhat seda deploy [--network networkName]
-
-# Deploy with custom SEDA configuration
-bunx hardhat seda deploy --drconfig deployments/drconfig.json [--network networkName]
-```
-
-### 📊 Querying Price Feeds
-
-Once deployed, you can interact with the price feeds using the available tasks:
-
-```bash
-# Check adapter status and configuration
-bunx hardhat seda adapter:status [--network networkName]
-
-# List all registered ticker symbols
-bunx hardhat seda adapter:tickers [--network networkName]
-
-# Get prices for all registered tickers
-bunx hardhat seda adapter:prices [--network networkName]
-
-# Get current price for a specific ticker
-bunx hardhat seda adapter:price --ticker BTC-USDT [--network networkName]
-
-# Get the contract address for a specific price feed
-bunx hardhat seda adapter:feed-address --ticker ETH-USD [--network networkName]
-```
-
-##️ Architecture
-
-### Core Components
-
-**PriceFeedAdapter**: The central coordinator that:
-- Deploys new PriceFeed contracts using minimal proxies
-- Maps ticker symbols to their corresponding PriceFeed addresses
-- Verifies SEDA oracle results and updates price feeds
-- Manages SEDA configuration parameters
-
-**PriceFeed**: Individual price feed contracts that:
-- Implement the AggregatorV2V3Interface for DeFi compatibility
-- Store latest price data (price, timestamp, round ID)
-- Can only be updated by the designated adapter
-- Use minimal storage for gas efficiency
-
-### Data Flow
-
-1. **Oracle Request**: External system requests price data from SEDA
-2. **Result Generation**: SEDA oracle network processes the request and generates results with cryptographic proofs
-3. **Result Submission**: Push-solver submits results to the adapter with Merkle proofs
-4. **Verification**: Adapter verifies the proof and validates consensus requirements
-5. **Price Update**: Adapter updates the corresponding PriceFeed contracts
-6. **DeFi Integration**: DeFi protocols can read prices using standard AggregatorV3Interface calls
-
-### Deployment Pattern
-
-The system uses a proxy-based deployment:
-
-- **PriceFeed Implementation**: Deployed once as the logic contract
-- **PriceFeedAdapter Proxy**: UUPS upgradeable proxy with adapter logic
-- **PriceFeed Proxies**: EIP-1167 minimal proxies created on-demand per ticker
-
-## 🧪 Development
-
-### Testing
-
-```bash
-# Run all tests
+bun run compile
 bun test
-
-# Run with gas reporting
-REPORT_GAS=true bun test
-
-# Run specific test file
-bunx hardhat test test/priceFeeds/CoreAdapter.test.ts
 ```
 
-### Code Linting
+## Deploy
+
+The repository ships a single deployment script that deploys FastProver and FastAdapter (both as UUPS proxies) and registers the SEDA FAST testnet signer as a trusted key on the prover:
 
 ```bash
-# Lint Solidity code
-bun run lint:sol
-
-# Lint TypeScript code
-bun run lint:ts
-
-# Fix linting issues
-bun run lint:sol:fix
-bun run lint:ts:fix
+bunx hardhat run scripts/deploy-fast.ts --network baseSepolia
 ```
 
-## ⚙️ Configuration
+The script prints the two proxy addresses and the trusted key on completion.
 
-### SEDA Parameters
+## Pushing updates
 
-The adapter stores configuration for SEDA oracle parameters:
+Any account can push updates; the prover enforces that the signature comes from a trusted SEDA FAST signer, and the adapter enforces `consensus == true` and `exitCode == 0`.
 
-- **Exec Program ID**: SEDA execution program identifier
-- **Tally Program ID**: SEDA tally program identifier
-- **Replication Factor**: Required consensus participants
-- **Tally Inputs**: Input parameters for tally execution
-- **Consensus Filter**: Consensus validation criteria
-
-### Data Encoding
-
-The system expects specific encoding formats:
-
-**Execution Inputs**: ABI-encoded `string[]` containing ticker symbols
-```solidity
-["BTC-USDT", "ETH-USD"] // encoded as ABI bytes
-```
-
-**Oracle Results**: ABI-encoded `int256[]` containing price values
-```solidity
-[50000000000, 3000000000] // prices with 6 decimal precision
-```
-
-## 🛡️ Security
-
-### Access Control
-- Only the adapter can update price feed data
-- Owner controls for adapter configuration and emergency pause
-- Timestamp validation prevents stale data updates
-
-### Verification
-- Cryptographic verification of all SEDA results
-- Merkle proof validation for batch inclusion
-- Consensus and exit code validation
-- Input validation for all external calls
-
-### Emergency Controls
-- Global pause functionality for all operations
-- Upgradeable architecture with storage collision protection
-
-## 🔗 Integration
-
-### DeFi Protocol Integration
-
-Price feeds implement the standard AggregatorV3Interface:
+Each element of `updateData` is an ABI-encoded `FastAdapter.SignedPayload`:
 
 ```solidity
-interface AggregatorV3Interface {
-    function latestRoundData() external view returns (
-        uint80 roundId,
-        int256 answer,
-        uint256 startedAt,
-        uint256 updatedAt,
-        uint80 answeredInRound
-    );
-    
-    function decimals() external view returns (uint8);
-    function description() external view returns (string memory);
-    function version() external view returns (uint256);
+struct SignedPayload {
+    bytes data;      // ABI-encoded SedaDataTypes.Result
+    bytes signature; // SEDA FAST ECDSA signature over deriveResultId(result)
 }
 ```
 
-### Reading Prices
-
-You can read prices either directly from individual PriceFeed contracts or through the adapter:
+The oracle program's tally output (`result.result`) must ABI-encode a non-empty `SedaPriceUpdate[]`:
 
 ```solidity
-// Direct from PriceFeed contract
-(uint80 roundId, int256 price, , uint256 updatedAt, ) = priceFeed.latestRoundData();
-
-// Through the adapter
-(uint80 roundId, int256 price, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) = 
-    adapter.getLatestRoundData("BTC-USDT");
+struct SedaPriceUpdate {
+    bytes32 symbolId;              // e.g. Pyth price feed id
+    PythAdapterStorage.PriceInfo priceInfo;
+}
 ```
 
-## 🤝 Contributing
+Submit through either `updatePriceFeeds(bytes[])` or `updatePriceFeedsIfNecessary(bytes[], bytes32[], uint64[])`. See `scripts/test-e2e.ts` for a full end-to-end example.
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes with comprehensive tests
-4. Submit a pull request
+## Reading prices
 
-## 📄 License
+```solidity
+IPyth pyth = IPyth(adapter);
+PythStructs.Price memory p = pyth.getPriceUnsafe(feedId);
+// or, with a freshness bound:
+PythStructs.Price memory p2 = pyth.getPriceNoOlderThan(feedId, maxAgeSeconds);
+```
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+`feedId` is computed client-side via `keccak256(abi.encode(drId, symbolId))`.
+
+## Development
+
+### Quality gates
+
+```bash
+bun run check           # lint + Solidity format check
+bun run lint            # TypeScript (Biome) + Solidity (solhint)
+bun run lint:ts:fix
+bun run lint:sol:fix
+bun run format:sol:fix
+```
+
+### Tests with reporting
+
+```bash
+bun run test:gas        # REPORT_GAS=true
+bun run test:coverage   # COVERAGE=true + hardhat coverage
+```
+
+### Cleanup
+
+```bash
+bun run clean           # hardhat clean + cache/coverage dirs
+```
+
+## Security
+
+- Only the FastProver's trusted signer set can produce accepted signatures.
+- The adapter additionally requires every accepted result to be in consensus with `exitCode == 0`.
+- Owner controls: updating the prover address, pausing updates, and authorizing upgrades.
+- Storage uses ERC-7201 namespaced layouts; upgrades are UUPS with `onlyOwner` authorization.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
