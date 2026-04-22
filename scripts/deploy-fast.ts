@@ -1,7 +1,8 @@
-import { ethers, upgrades, network } from "hardhat";
+import { ethers, network, upgrades } from "hardhat";
 
 // Oracle program config (pyth-hermes-fast deployed to SEDA testnet)
-const EXEC_PROGRAM_ID = "0xfbec1463d982f85bfe1f316015e401b943f8ca6ec9c644944104d15e32c1fba7";
+const EXEC_PROGRAM_ID =
+  "0xfbec1463d982f85bfe1f316015e401b943f8ca6ec9c644944104d15e32c1fba7";
 const TALLY_PROGRAM_ID = EXEC_PROGRAM_ID;
 
 // SEDA FAST testnet signer
@@ -11,7 +12,9 @@ async function main() {
   const [deployer] = await ethers.getSigners();
   const balance = await ethers.provider.getBalance(deployer.address);
 
-  console.log(`\nDeploying to ${network.name} (chain ${network.config.chainId})`);
+  console.log(
+    `\nDeploying to ${network.name} (chain ${network.config.chainId})`,
+  );
   console.log(`Deployer: ${deployer.address}`);
   console.log(`Balance:  ${ethers.formatEther(balance)} ETH\n`);
 
@@ -54,7 +57,9 @@ async function main() {
   const apiKey = process.env.SEDA_FAST_API_KEY;
   if (!apiKey) {
     console.log("  SEDA_FAST_API_KEY not set, skipping drId registration.");
-    console.log("  You'll need to register the drId manually via registerDataRequest().");
+    console.log(
+      "  You'll need to register the drId manually via registerDataRequest().",
+    );
   } else {
     const execInputs = JSON.stringify({
       pyth_id: USDC_RAW_ID,
@@ -73,16 +78,16 @@ async function main() {
     });
 
     if (res.ok) {
-      const data = await res.json() as any;
-      const drId = "0x" + data.data.dataResult.drId;
+      const data = await res.json();
+      const drId = `0x${data.data.dataResult.drId}`;
       console.log(`  drId: ${drId}`);
 
       // 5. Register the data request with program config
       console.log("  Registering data request...");
-      const tx2 = await fastAdapter.registerDataRequest(
-        drId,
-        { execProgramId: EXEC_PROGRAM_ID, tallyProgramId: TALLY_PROGRAM_ID },
-      );
+      const tx2 = await fastAdapter.registerDataRequest(drId, {
+        execProgramId: EXEC_PROGRAM_ID,
+        tallyProgramId: TALLY_PROGRAM_ID,
+      });
       await tx2.wait();
       console.log("  Data request registered!");
     } else {

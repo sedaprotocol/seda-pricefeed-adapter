@@ -32,10 +32,7 @@ export function deriveResultId(result: {
   const versionHash = ethers.keccak256(ethers.toUtf8Bytes(result.version));
   const drIdBytes = ethers.getBytes(result.drId);
   const consensusByte = result.consensus ? "0x01" : "0x00";
-  const exitCodeByte = ethers.zeroPadValue(
-    ethers.toBeHex(result.exitCode),
-    1,
-  );
+  const exitCodeByte = ethers.zeroPadValue(ethers.toBeHex(result.exitCode), 1);
   const resultHash = ethers.keccak256(result.result);
   const blockHeightBytes = ethers.zeroPadValue(
     ethers.toBeHex(BigInt(result.blockHeight)),

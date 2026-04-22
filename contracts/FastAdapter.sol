@@ -202,11 +202,7 @@ contract FastAdapter is BaseUpgradeable, BasePythAdapter {
     ///      5. ABI-decode result.result as SedaPriceUpdate[]
     function _verifyAndDecode(
         bytes calldata signedPayload
-    )
-        private
-        view
-        returns (FastStructs.ProgramConfig memory programConfig, SedaPriceUpdate[] memory updates)
-    {
+    ) private view returns (FastStructs.ProgramConfig memory programConfig, SedaPriceUpdate[] memory updates) {
         FastStructs.SignedPayload memory payload = abi.decode(signedPayload, (FastStructs.SignedPayload));
 
         // Decode the Result from payload.data

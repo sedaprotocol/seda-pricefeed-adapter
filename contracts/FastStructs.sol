@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {SedaDataTypes} from "@seda-protocol/evm/contracts/libraries/SedaDataTypes.sol";
-
 /// @title FastStructs
 /// @author Open Oracle Association
 /// @notice Structs for FastAdapter

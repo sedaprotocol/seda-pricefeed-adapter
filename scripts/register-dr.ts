@@ -2,14 +2,16 @@ import "dotenv/config";
 import { ethers } from "hardhat";
 
 // Oracle program config (pyth-hermes-fast deployed to SEDA testnet)
-const EXEC_PROGRAM_ID = "0xfbec1463d982f85bfe1f316015e401b943f8ca6ec9c644944104d15e32c1fba7";
+const EXEC_PROGRAM_ID =
+  "0xfbec1463d982f85bfe1f316015e401b943f8ca6ec9c644944104d15e32c1fba7";
 const TALLY_PROGRAM_ID = EXEC_PROGRAM_ID;
 
 // Deployed contract addresses on Base Sepolia
 const FAST_ADAPTER_ADDRESS = "0xDc2c35fE5c350c4F8633002EA77e1eD97409d049";
 
 // USDC/USD Pyth feed ID (no 0x prefix for the API call)
-const USDC_PYTH_ID = "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a";
+const USDC_PYTH_ID =
+  "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a";
 
 async function main() {
   const apiKey = process.env.SEDA_FAST_API_KEY;
@@ -44,11 +46,11 @@ async function main() {
     throw new Error(`SEDA FAST API error ${res.status}: ${text.slice(0, 500)}`);
   }
 
-  const data = (await res.json()) as any;
+  const data = await res.json();
   console.log("\nSEDA FAST response:");
   console.log(JSON.stringify(data, null, 2));
 
-  const drId = "0x" + data.data.dataResult.drId;
+  const drId = `0x${data.data.dataResult.drId}`;
   console.log(`\ndrId: ${drId}`);
 
   // 2. Register the drId on the FastAdapter
