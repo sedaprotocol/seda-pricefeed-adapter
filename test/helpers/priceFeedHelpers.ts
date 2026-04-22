@@ -9,7 +9,7 @@ const SIGNED_PAYLOAD_ABI_TYPE = "tuple(bytes data, bytes signature)";
 
 // ABI type for SedaPriceUpdate[] — matches the oracle program's tally output
 const SEDA_PRICE_UPDATE_ARRAY_TYPE =
-  "tuple(bytes32 rawId,tuple(uint64 publishTime,int32 expo,int64 price,uint64 conf,int64 emaPrice,uint64 emaConf) priceInfo)[]";
+  "tuple(bytes32 symbolId,tuple(uint64 publishTime,int32 expo,int64 price,uint64 conf,int64 emaPrice,uint64 emaConf) priceInfo)[]";
 
 // SEDA protocol version (must match SedaDataTypes.VERSION)
 const SEDA_VERSION = "0.0.1";
@@ -70,7 +70,7 @@ export function deriveResultId(result: {
  */
 export function encodeSedaPriceUpdates(
   updates: Array<{
-    rawId: string;
+    symbolId: string;
     priceInfo: {
       publishTime: number;
       expo: number;
@@ -94,7 +94,7 @@ export async function submitPriceUpdate(
   },
   trustedKey: Wallet,
   drId: string,
-  rawId: string,
+  symbolId: string,
   price: bigint,
   conf: bigint,
   publishTime: number = Math.floor(Date.now() / 1000),
@@ -102,7 +102,7 @@ export async function submitPriceUpdate(
   const updateData = await createValidUpdateData(
     trustedKey,
     drId,
-    rawId,
+    symbolId,
     price,
     conf,
     publishTime,
@@ -114,7 +114,7 @@ export async function submitPriceUpdate(
 export async function createValidUpdateData(
   trustedKey: Wallet,
   drId: string,
-  rawId: string,
+  symbolId: string,
   price: bigint,
   conf: bigint,
   publishTime: number = Math.floor(Date.now() / 1000),
@@ -122,7 +122,7 @@ export async function createValidUpdateData(
 ): Promise<string> {
   const resultBytes = encodeSedaPriceUpdates([
     {
-      rawId,
+      symbolId,
       priceInfo: {
         publishTime,
         expo,
@@ -154,11 +154,11 @@ export async function createValidUpdateData(
 export async function createInvalidExitCodePayload(
   trustedKey: Wallet,
   drId: string,
-  rawId: string,
+  symbolId: string,
 ): Promise<string> {
   const resultBytes = encodeSedaPriceUpdates([
     {
-      rawId,
+      symbolId,
       priceInfo: {
         publishTime: Math.floor(Date.now() / 1000),
         expo: -8,
@@ -209,16 +209,12 @@ export async function createEmptyBatchPayload(
   return encodeAndSign(result, trustedKey);
 }
 
-// Helper function to compute asset ID (GLOBAL price ID)
-export function computeAssetId(
-  execProgramId: string,
-  tallyProgramId: string,
-  rawId: string,
-): string {
+// Helper function to compute feedId (keyed by drId + symbolId)
+export function computeFeedId(drId: string, symbolId: string): string {
   return ethers.keccak256(
     ethers.AbiCoder.defaultAbiCoder().encode(
-      ["bytes32", "bytes32", "bytes32"],
-      [execProgramId, tallyProgramId, rawId],
+      ["bytes32", "bytes32"],
+      [drId, symbolId],
     ),
   );
 }

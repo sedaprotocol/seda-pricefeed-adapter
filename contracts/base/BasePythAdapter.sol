@@ -471,7 +471,7 @@ abstract contract BasePythAdapter is IPyth {
     /// @return ids GLOBAL price IDs (already mapped from any raw/oracle-specific IDs)
     /// @return infos Decoded price infos corresponding to each id
     /// @dev MUST verify authenticity (e.g., signatures/merkle proofs) and MUST map oracle-native IDs
-    ///      to GLOBAL IDs appropriate for this adapter (e.g., keccak(exec,tally,rawId) for SEDA).
+    ///      to GLOBAL IDs appropriate for this adapter (e.g., keccak(drId, symbolId) for SEDA).
     /// @dev MUST return ALL decoded updates in the blob to support the strict minimality check (when enabled).
     function _processUpdateData(
         bytes calldata updateData

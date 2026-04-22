@@ -3,7 +3,6 @@ import { ethers } from "hardhat";
 
 const EXEC_PROGRAM_ID =
   "0xfbec1463d982f85bfe1f316015e401b943f8ca6ec9c644944104d15e32c1fba7";
-const TALLY_PROGRAM_ID = EXEC_PROGRAM_ID;
 const FAST_ADAPTER_ADDRESS = "0xDc2c35fE5c350c4F8633002EA77e1eD97409d049";
 const USDC_PYTH_ID =
   "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a";
@@ -83,17 +82,14 @@ async function main() {
   console.log(`  tx: ${tx.hash}`);
   console.log(`  gas: ${receipt?.gasUsed.toString()}`);
 
-  // 4. Read the price
-  const rawId = `0x${USDC_PYTH_ID}`;
-  const globalId = ethers.keccak256(
-    abiCoder.encode(
-      ["bytes32", "bytes32", "bytes32"],
-      [EXEC_PROGRAM_ID, TALLY_PROGRAM_ID, rawId],
-    ),
+  // 4. Read the price (feedId = keccak256(abi.encode(drId, symbolId)))
+  const symbolId = `0x${USDC_PYTH_ID}`;
+  const feedId = ethers.keccak256(
+    abiCoder.encode(["bytes32", "bytes32"], [result.drId, symbolId]),
   );
 
-  const price = await adapter.getPriceUnsafe(globalId);
-  console.log(`\nUSDC/USD Price Feed (globalId: ${globalId}):`);
+  const price = await adapter.getPriceUnsafe(feedId);
+  console.log(`\nUSDC/USD Price Feed (feedId: ${feedId}):`);
   console.log(`  price:       ${price.price}`);
   console.log(`  conf:        ${price.conf}`);
   console.log(`  expo:        ${price.expo}`);
@@ -101,7 +97,7 @@ async function main() {
     `  publishTime: ${price.publishTime} (${new Date(Number(price.publishTime) * 1000).toISOString()})`,
   );
 
-  const ema = await adapter.getEmaPriceUnsafe(globalId);
+  const ema = await adapter.getEmaPriceUnsafe(feedId);
   console.log(`  emaPrice:    ${ema.price}`);
   console.log(`  emaConf:     ${ema.conf}`);
 

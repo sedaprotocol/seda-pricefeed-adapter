@@ -5,7 +5,7 @@ import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
 import type { FastAdapter } from "../../typechain-types/contracts/FastAdapter";
 import type { FastProver } from "../../typechain-types/contracts/provers/FastProver";
-import { computeAssetId, deriveResultId } from "../helpers/priceFeedHelpers";
+import { computeFeedId, deriveResultId } from "../helpers/priceFeedHelpers";
 
 // Real production vector captured from the SEDA FAST service.
 // See ./fast-execution.json — { request, response } captured from the live service.
@@ -91,15 +91,7 @@ describe("FastAdapter — real SEDA FAST production vector", () => {
   it("accepts a real signed result end-to-end and updates the price feed", async () => {
     const { fastAdapter } = await loadFixture(deployWithTrustedKey);
 
-    // Register the drId with the oracle program config from fast-response.
-    const execProgramId = `0x${FAST_RESPONSE.data.dataRequest.execProgramId}`;
-    const tallyProgramId = `0x${FAST_RESPONSE.data.dataRequest.tallyProgramId}`;
     const drId = `0x${FAST_RESPONSE.data.dataResult.drId}`;
-
-    await fastAdapter.registerDataRequest(drId, {
-      execProgramId,
-      tallyProgramId,
-    });
 
     // Build the signed payload using the raw signature (v ∈ {0, 1}) exactly
     // as emitted by the SEDA FAST service. FastProver normalizes v on-chain.
@@ -119,11 +111,11 @@ describe("FastAdapter — real SEDA FAST production vector", () => {
 
     // Verify the stored feed matches the values reported by the oracle.
     // See fast-response.data.execute.result for the human-readable feed JSON.
-    const rawId =
+    const symbolId =
       "0xb39c402b9bd8428ba7a4cc2d1aca1432756cddeb60941a9175541a819095269e";
-    const assetId = computeAssetId(execProgramId, tallyProgramId, rawId);
+    const feedId = computeFeedId(drId, symbolId);
 
-    const info = await fastAdapter.getPriceInfo(assetId);
+    const info = await fastAdapter.getPriceInfo(feedId);
     expect(info.price).to.equal(7597665123165n);
     expect(info.conf).to.equal(1797622665n);
     expect(info.expo).to.equal(-8);
