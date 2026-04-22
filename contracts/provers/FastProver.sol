@@ -143,11 +143,21 @@ contract FastProver is BaseUpgradeable {
     /// @param messageHash The hash of the message to verify
     /// @param signature The ECDSA signature to verify
     /// @return attester The address of the attester that signed the message
-    /// @dev Reverts with SignatureVerificationFailed if the signature is invalid or from an untrusted key
+    /// @dev Reverts with SignatureVerificationFailed if the signature is invalid or from an untrusted key.
+    ///      Normalizes the v-byte from raw secp256k1 ({0, 1}) to Ethereum canonical ({27, 28})
+    ///      so signatures emitted by the SEDA FAST service verify as-is.
+    ///      TODO(seda-fast): remove this normalization once the SEDA FAST service emits
+    ///      Ethereum-canonical v bytes natively; the relayer/submitter will no longer need it.
     function _verifySignature(bytes32 messageHash, bytes calldata signature) internal view returns (address attester) {
-        // Recover the signer from the signature
-        // ECDSA.recover() already validates signature length and format
-        address signer = messageHash.recover(signature);
+        // Copy calldata to memory so we can normalize the v-byte in place.
+        // ECDSA.recover(bytes) handles length/format validation.
+        bytes memory sig = signature;
+        if (sig.length == 65) {
+            uint8 v = uint8(sig[64]);
+            if (v < 27) sig[64] = bytes1(v + 27);
+        }
+
+        address signer = messageHash.recover(sig);
 
         // Check if the signer is a trusted key
         if (!FastProverStorage.layout().trustedKeys[signer]) {
