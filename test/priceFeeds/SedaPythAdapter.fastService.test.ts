@@ -3,8 +3,8 @@ import * as path from "node:path";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
-import type { FastAdapter } from "../../typechain-types/contracts/FastAdapter";
-import type { FastProver } from "../../typechain-types/contracts/provers/FastProver";
+import type { SedaPythAdapter } from "../../typechain-types/contracts/SedaPythAdapter";
+import type { FastProver } from "../../typechain-types/contracts/FastProver";
 import { computeFeedId, deriveResultId } from "../helpers/priceFeedHelpers";
 
 // Real production vector captured from the SEDA FAST service.
@@ -54,7 +54,7 @@ function buildSedaResult() {
   };
 }
 
-describe("FastAdapter — real SEDA FAST production vector", () => {
+describe("SedaPythAdapter — real SEDA FAST production vector", () => {
   // Ethereum address derived from the SEDA FAST signer's compressed pubkey.
   const trustedSigner = ethers.computeAddress(FAST_SIGNER_PUBKEY);
 
@@ -69,14 +69,14 @@ describe("FastAdapter — real SEDA FAST production vector", () => {
     )) as unknown as FastProver;
     await fastProver.addTrustedKey(trustedSigner);
 
-    const FastAdapterFactory = await ethers.getContractFactory("FastAdapter");
-    const fastAdapter = (await upgrades.deployProxy(
-      FastAdapterFactory,
+    const SedaPythAdapterFactory = await ethers.getContractFactory("SedaPythAdapter");
+    const sedaPythAdapter = (await upgrades.deployProxy(
+      SedaPythAdapterFactory,
       [await fastProver.getAddress(), owner.address],
       { initializer: "initialize" },
-    )) as unknown as FastAdapter;
+    )) as unknown as SedaPythAdapter;
 
-    return { fastAdapter, fastProver, owner };
+    return { sedaPythAdapter, fastProver, owner };
   }
 
   it("recovers the SEDA FAST signer from the normalized signature", () => {
@@ -89,7 +89,7 @@ describe("FastAdapter — real SEDA FAST production vector", () => {
   });
 
   it("accepts a real signed result end-to-end and updates the price feed", async () => {
-    const { fastAdapter } = await loadFixture(deployWithTrustedKey);
+    const { sedaPythAdapter } = await loadFixture(deployWithTrustedKey);
 
     const drId = `0x${FAST_RESPONSE.data.dataResult.drId}`;
 
@@ -107,7 +107,7 @@ describe("FastAdapter — real SEDA FAST production vector", () => {
       [{ data, signature }],
     );
 
-    await fastAdapter.updatePriceFeeds([payload]);
+    await sedaPythAdapter.updatePriceFeeds([payload]);
 
     // Verify the stored feed matches the values reported by the oracle.
     // See fast-response.data.execute.result for the human-readable feed JSON.
@@ -115,7 +115,7 @@ describe("FastAdapter — real SEDA FAST production vector", () => {
       "0xb39c402b9bd8428ba7a4cc2d1aca1432756cddeb60941a9175541a819095269e";
     const feedId = computeFeedId(drId, symbolId);
 
-    const info = await fastAdapter.getPriceInfo(feedId);
+    const info = await sedaPythAdapter.getPriceInfo(feedId);
     expect(info.price).to.equal(7597665123165n);
     expect(info.conf).to.equal(1797622665n);
     expect(info.expo).to.equal(-8);

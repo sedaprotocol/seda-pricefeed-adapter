@@ -1,9 +1,10 @@
 import "dotenv/config";
 import { ethers } from "hardhat";
+import type { SedaPythAdapter } from "../typechain-types/contracts/SedaPythAdapter";
 
 const EXEC_PROGRAM_ID =
   "0xfbec1463d982f85bfe1f316015e401b943f8ca6ec9c644944104d15e32c1fba7";
-const FAST_ADAPTER_ADDRESS = "0xDc2c35fE5c350c4F8633002EA77e1eD97409d049";
+const SEDA_PYTH_ADAPTER_ADDRESS = "0xDc2c35fE5c350c4F8633002EA77e1eD97409d049";
 const USDC_PYTH_ID =
   "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a";
 
@@ -72,10 +73,12 @@ async function main() {
     [{ data: encodedResult, signature }],
   );
 
-  // 3. Submit to FastAdapter
-  console.log("Submitting to FastAdapter...");
-  const FastAdapter = await ethers.getContractFactory("FastAdapter");
-  const adapter = FastAdapter.attach(FAST_ADAPTER_ADDRESS);
+  // 3. Submit to SedaPythAdapter
+  console.log("Submitting to SedaPythAdapter...");
+  const SedaPythAdapter = await ethers.getContractFactory("SedaPythAdapter");
+  const adapter = SedaPythAdapter.attach(
+    SEDA_PYTH_ADAPTER_ADDRESS,
+  ) as unknown as SedaPythAdapter;
 
   const tx = await adapter.updatePriceFeeds([signedPayload]);
   const receipt = await tx.wait();

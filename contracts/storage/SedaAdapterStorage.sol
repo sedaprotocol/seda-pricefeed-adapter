@@ -1,26 +1,28 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-/// @title FastAdapterStorage
+/// @title SedaAdapterStorage
 /// @author Open Oracle Association
-/// @notice Storage library for FastAdapter using the ERC-7201 storage pattern.
-/// @dev Storage layout for oracle-specific data in FastAdapter, separate from generic Pyth storage.
-/// @custom:storage-location fastadapter.storage.v1
-library FastAdapterStorage {
+/// @notice Storage library for SEDA-aware adapters using the ERC-7201 storage pattern.
+/// @dev Holds state shared by any adapter that verifies SEDA FAST oracle results (prover address,
+///      future extensions). Decoupled from any concrete price-feed interface so both Pyth-style
+///      and Chainlink-style adapters can reuse it.
+/// @custom:storage-location sedaadapter.storage.v1
+library SedaAdapterStorage {
     // ============ Constants ============
 
-    /// @notice ERC-7201 storage slot for FastAdapterStorage (version 1)
-    /// @dev Namespace: "fastadapter.storage.v1"
+    /// @notice ERC-7201 storage slot for SedaAdapterStorage (version 1)
+    /// @dev Namespace: "sedaadapter.storage.v1"
     ///      ERC-7201 calculation: keccak256(abi.encode(uint256(keccak256(namespace)) - 1)) & ~bytes32(uint256(0xff))
     bytes32 internal constant STORAGE_SLOT_V1 =
-        keccak256(abi.encode(uint256(keccak256("fastadapter.storage.v1")) - 1)) & ~bytes32(uint256(0xff));
+        keccak256(abi.encode(uint256(keccak256("sedaadapter.storage.v1")) - 1)) & ~bytes32(uint256(0xff));
 
     // ============ Structs ============
 
-    /// @notice Storage layout for FastAdapterStorage (v1)
+    /// @notice Storage layout for SedaAdapterStorage (v1)
     /// @dev Do not change the order of fields. For new fields, create a new versioned layout.
     struct Layout {
-        /// @notice The oracle prover contract used for result verification
+        /// @notice The SEDA prover contract used for result verification
         address sedaProver;
     }
 

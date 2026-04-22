@@ -24,8 +24,6 @@ library FastProverStorage {
         mapping(address => bool) trustedKeys;
         /// @notice Array of all trusted public keys for enumeration
         address[] trustedKeysList;
-        /// @notice Mapping to track if a key exists in the trustedKeysList array
-        mapping(address => bool) keyExists;
     }
 
     // ============ Functions ============

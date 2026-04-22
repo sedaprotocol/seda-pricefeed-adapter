@@ -29,17 +29,17 @@ async function main() {
   const proverAddress = await fastProver.getAddress();
   console.log(`  FastProver proxy: ${proverAddress}`);
 
-  // 2. Deploy FastAdapter
-  console.log("Deploying FastAdapter...");
-  const FastAdapter = await ethers.getContractFactory("FastAdapter");
-  const fastAdapter = await upgrades.deployProxy(
-    FastAdapter,
+  // 2. Deploy SedaPythAdapter
+  console.log("Deploying SedaPythAdapter...");
+  const SedaPythAdapter = await ethers.getContractFactory("SedaPythAdapter");
+  const sedaPythAdapter = await upgrades.deployProxy(
+    SedaPythAdapter,
     [proverAddress, deployer.address],
     { initializer: "initialize" },
   );
-  await fastAdapter.waitForDeployment();
-  const adapterAddress = await fastAdapter.getAddress();
-  console.log(`  FastAdapter proxy: ${adapterAddress}`);
+  await sedaPythAdapter.waitForDeployment();
+  const adapterAddress = await sedaPythAdapter.getAddress();
+  console.log(`  SedaPythAdapter proxy: ${adapterAddress}`);
 
   // 3. Register SEDA FAST testnet public key as trusted signer
   console.log(`\nRegistering SEDA FAST key: ${SEDA_FAST_ADDRESS}`);
@@ -49,9 +49,9 @@ async function main() {
 
   // Summary
   console.log("\n========== Deployment Complete ==========");
-  console.log(`FastProver:  ${proverAddress}`);
-  console.log(`FastAdapter: ${adapterAddress}`);
-  console.log(`Trusted key: ${SEDA_FAST_ADDRESS}`);
+  console.log(`FastProver:      ${proverAddress}`);
+  console.log(`SedaPythAdapter: ${adapterAddress}`);
+  console.log(`Trusted key:     ${SEDA_FAST_ADDRESS}`);
   console.log("==========================================\n");
 }
 

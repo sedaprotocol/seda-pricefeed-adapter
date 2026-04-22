@@ -2,8 +2,8 @@ import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import type { Wallet } from "ethers";
 import { ethers, upgrades } from "hardhat";
-import type { FastAdapter } from "../../typechain-types/contracts/FastAdapter";
-import type { FastProver } from "../../typechain-types/contracts/provers/FastProver";
+import type { SedaPythAdapter } from "../../typechain-types/contracts/SedaPythAdapter";
+import type { FastProver } from "../../typechain-types/contracts/FastProver";
 import {
   computeFeedId,
   createEmptyBatchPayload,
@@ -14,9 +14,9 @@ import {
 } from "../helpers/priceFeedHelpers";
 import { createTrustedKey } from "../helpers/proverHelpers";
 
-describe("FastAdapter", () => {
+describe("SedaPythAdapter", () => {
   // Fixture function
-  async function deployFastAdapterFixture() {
+  async function deploySedaPythAdapterFixture() {
     const [owner, user] = await ethers.getSigners();
 
     const FastProver = await ethers.getContractFactory("FastProver");
@@ -26,24 +26,24 @@ describe("FastAdapter", () => {
       { initializer: "initialize" },
     )) as unknown as FastProver;
 
-    const FastAdapter = await ethers.getContractFactory("FastAdapter");
-    const fastAdapter = await upgrades.deployProxy(
-      FastAdapter,
+    const SedaPythAdapter = await ethers.getContractFactory("SedaPythAdapter");
+    const sedaPythAdapter = await upgrades.deployProxy(
+      SedaPythAdapter,
       [await fastProver.getAddress(), owner.address],
       { initializer: "initialize" },
     );
 
-    return { fastAdapter, fastProver, owner, user };
+    return { sedaPythAdapter, fastProver, owner, user };
   }
 
   describe("Initialization", () => {
     it("Should initialize with correct parameters", async () => {
-      const { fastAdapter, fastProver, owner } = await loadFixture(
-        deployFastAdapterFixture,
+      const { sedaPythAdapter, fastProver, owner } = await loadFixture(
+        deploySedaPythAdapterFixture,
       );
 
-      expect(await fastAdapter.owner()).to.equal(owner.address);
-      expect(await fastAdapter.getProver()).to.equal(
+      expect(await sedaPythAdapter.owner()).to.equal(owner.address);
+      expect(await sedaPythAdapter.getProver()).to.equal(
         await fastProver.getAddress(),
       );
     });
@@ -57,27 +57,27 @@ describe("FastAdapter", () => {
         { initializer: "initialize" },
       )) as unknown as FastProver;
 
-      const FastAdapter = await ethers.getContractFactory("FastAdapter");
+      const SedaPythAdapter = await ethers.getContractFactory("SedaPythAdapter");
       await expect(
         upgrades.deployProxy(
-          FastAdapter,
+          SedaPythAdapter,
           [await fastProver.getAddress(), ethers.ZeroAddress],
           { initializer: "initialize" },
         ),
       )
-        .to.be.revertedWithCustomError(FastAdapter, "ZeroAddressNotAllowed")
+        .to.be.revertedWithCustomError(SedaPythAdapter, "ZeroAddressNotAllowed")
         .withArgs("owner");
     });
 
     it("Should not initialize with zero prover address", async () => {
       const [owner] = await ethers.getSigners();
-      const FastAdapter = await ethers.getContractFactory("FastAdapter");
+      const SedaPythAdapter = await ethers.getContractFactory("SedaPythAdapter");
       await expect(
-        upgrades.deployProxy(FastAdapter, [ethers.ZeroAddress, owner.address], {
+        upgrades.deployProxy(SedaPythAdapter, [ethers.ZeroAddress, owner.address], {
           initializer: "initialize",
         }),
       )
-        .to.be.revertedWithCustomError(FastAdapter, "ZeroAddressNotAllowed")
+        .to.be.revertedWithCustomError(SedaPythAdapter, "ZeroAddressNotAllowed")
         .withArgs("prover");
     });
   });
@@ -85,8 +85,8 @@ describe("FastAdapter", () => {
   describe("Access Control", () => {
     describe("Prover Management", () => {
       it("Should allow owner to update prover", async () => {
-        const { fastAdapter, fastProver } = await loadFixture(
-          deployFastAdapterFixture,
+        const { sedaPythAdapter, fastProver } = await loadFixture(
+          deploySedaPythAdapterFixture,
         );
 
         const [newOwner] = await ethers.getSigners();
@@ -97,61 +97,61 @@ describe("FastAdapter", () => {
           { initializer: "initialize" },
         );
 
-        await expect(fastAdapter.updateProver(await newFastProver.getAddress()))
-          .to.emit(fastAdapter, "ProverUpdated")
+        await expect(sedaPythAdapter.updateProver(await newFastProver.getAddress()))
+          .to.emit(sedaPythAdapter, "ProverUpdated")
           .withArgs(
             await fastProver.getAddress(),
             await newFastProver.getAddress(),
           );
 
-        expect(await fastAdapter.getProver()).to.equal(
+        expect(await sedaPythAdapter.getProver()).to.equal(
           await newFastProver.getAddress(),
         );
       });
 
       it("Should revert when non-owner tries to update prover", async () => {
-        const { fastAdapter, user } = await loadFixture(
-          deployFastAdapterFixture,
+        const { sedaPythAdapter, user } = await loadFixture(
+          deploySedaPythAdapterFixture,
         );
         await expect(
-          fastAdapter.connect(user).updateProver(user.address),
+          sedaPythAdapter.connect(user).updateProver(user.address),
         ).to.be.revertedWithCustomError(
-          fastAdapter,
+          sedaPythAdapter,
           "OwnableUnauthorizedAccount",
         );
       });
 
       it("Should revert when updating prover to zero address", async () => {
-        const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
+        const { sedaPythAdapter } = await loadFixture(deploySedaPythAdapterFixture);
         await expect(
-          fastAdapter.updateProver(ethers.ZeroAddress),
-        ).to.be.revertedWithCustomError(fastAdapter, "ZeroAddressNotAllowed");
+          sedaPythAdapter.updateProver(ethers.ZeroAddress),
+        ).to.be.revertedWithCustomError(sedaPythAdapter, "ZeroAddressNotAllowed");
       });
     });
 
     describe("Pausable Functions", () => {
       it("Should allow owner to pause/unpause", async () => {
-        const { fastAdapter, owner } = await loadFixture(
-          deployFastAdapterFixture,
+        const { sedaPythAdapter, owner } = await loadFixture(
+          deploySedaPythAdapterFixture,
         );
 
-        await expect(fastAdapter.pause())
-          .to.emit(fastAdapter, "Paused")
+        await expect(sedaPythAdapter.pause())
+          .to.emit(sedaPythAdapter, "Paused")
           .withArgs(owner.address);
 
-        await expect(fastAdapter.unpause())
-          .to.emit(fastAdapter, "Unpaused")
+        await expect(sedaPythAdapter.unpause())
+          .to.emit(sedaPythAdapter, "Unpaused")
           .withArgs(owner.address);
       });
 
       it("Should revert when non-owner tries to pause", async () => {
-        const { fastAdapter, user } = await loadFixture(
-          deployFastAdapterFixture,
+        const { sedaPythAdapter, user } = await loadFixture(
+          deploySedaPythAdapterFixture,
         );
         await expect(
-          fastAdapter.connect(user).pause(),
+          sedaPythAdapter.connect(user).pause(),
         ).to.be.revertedWithCustomError(
-          fastAdapter,
+          sedaPythAdapter,
           "OwnableUnauthorizedAccount",
         );
       });
@@ -159,24 +159,24 @@ describe("FastAdapter", () => {
   });
 
   describe("Core Price Feed Operations", () => {
-    let fastAdapter: FastAdapter;
+    let sedaPythAdapter: SedaPythAdapter;
     let fastProver: FastProver;
     let trustedKey: Wallet;
     let btcDrId: string;
-    let btcRawId: string;
+    let btcSymbolId: string;
     let btcFeedId: string;
 
     beforeEach(async () => {
-      const fixture = await loadFixture(deployFastAdapterFixture);
-      fastAdapter = fixture.fastAdapter;
+      const fixture = await loadFixture(deploySedaPythAdapterFixture);
+      sedaPythAdapter = fixture.sedaPythAdapter;
       fastProver = fixture.fastProver;
 
       trustedKey = createTrustedKey();
       await fastProver.addTrustedKey(trustedKey.address);
 
       btcDrId = ethers.id("btc_dr_id");
-      btcRawId = ethers.id("BTC/USD");
-      btcFeedId = computeFeedId(btcDrId, btcRawId);
+      btcSymbolId = ethers.id("BTC/USD");
+      btcFeedId = computeFeedId(btcDrId, btcSymbolId);
     });
 
     describe("updatePriceFeeds", () => {
@@ -184,45 +184,45 @@ describe("FastAdapter", () => {
         const updateData = await createValidUpdateData(
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           50000n,
           100n,
         );
 
-        await expect(fastAdapter.updatePriceFeeds([updateData])).to.emit(
-          fastAdapter,
+        await expect(sedaPythAdapter.updatePriceFeeds([updateData])).to.emit(
+          sedaPythAdapter,
           "PriceFeedUpdate",
         );
 
-        const price = await fastAdapter.getPriceUnsafe(btcFeedId);
+        const price = await sedaPythAdapter.getPriceUnsafe(btcFeedId);
         expect(price.price).to.equal(50000n);
         expect(price.conf).to.equal(100n);
       });
 
       it("Should handle multiple updates in batch", async () => {
         const ethDrId = ethers.id("eth_dr_id");
-        const ethRawId = ethers.id("ETH/USD");
-        const ethFeedId = computeFeedId(ethDrId, ethRawId);
+        const ethSymbolId = ethers.id("ETH/USD");
+        const ethFeedId = computeFeedId(ethDrId, ethSymbolId);
 
         const btcData = await createValidUpdateData(
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           50000n,
           100n,
         );
         const ethData = await createValidUpdateData(
           trustedKey,
           ethDrId,
-          ethRawId,
+          ethSymbolId,
           3000n,
           50n,
         );
 
-        await fastAdapter.updatePriceFeeds([btcData, ethData]);
+        await sedaPythAdapter.updatePriceFeeds([btcData, ethData]);
 
-        const btcPrice = await fastAdapter.getPriceUnsafe(btcFeedId);
-        const ethPrice = await fastAdapter.getPriceUnsafe(ethFeedId);
+        const btcPrice = await sedaPythAdapter.getPriceUnsafe(btcFeedId);
+        const ethPrice = await sedaPythAdapter.getPriceUnsafe(ethFeedId);
 
         expect(btcPrice.price).to.equal(50000n);
         expect(ethPrice.price).to.equal(3000n);
@@ -230,29 +230,29 @@ describe("FastAdapter", () => {
 
       it("Should update existing price with newer timestamp", async () => {
         await submitPriceUpdate(
-          fastAdapter,
+          sedaPythAdapter,
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           50000n,
           100n,
         );
 
-        const assetIds = await fastAdapter.getAssetIds();
+        const assetIds = await sedaPythAdapter.getAssetIds();
         const assetId = assetIds[0];
-        const initialPriceInfo = await fastAdapter.getPriceInfo(assetId);
+        const initialPriceInfo = await sedaPythAdapter.getPriceInfo(assetId);
 
         await new Promise((resolve) => setTimeout(resolve, 1000));
         await submitPriceUpdate(
-          fastAdapter,
+          sedaPythAdapter,
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           51000n,
           120n,
         );
 
-        const updatedPriceInfo = await fastAdapter.getPriceInfo(assetId);
+        const updatedPriceInfo = await sedaPythAdapter.getPriceInfo(assetId);
         expect(updatedPriceInfo.price).to.equal(51000n);
         expect(updatedPriceInfo.publishTime).to.be.greaterThan(
           initialPriceInfo.publishTime,
@@ -260,58 +260,58 @@ describe("FastAdapter", () => {
       });
 
       it("Should revert when paused", async () => {
-        await fastAdapter.pause();
+        await sedaPythAdapter.pause();
         const updateData = await createValidUpdateData(
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           50000n,
           100n,
         );
 
         await expect(
-          fastAdapter.updatePriceFeeds([updateData]),
-        ).to.be.revertedWithCustomError(fastAdapter, "EnforcedPause");
+          sedaPythAdapter.updatePriceFeeds([updateData]),
+        ).to.be.revertedWithCustomError(sedaPythAdapter, "EnforcedPause");
       });
 
       it("Should revert with invalid exit code", async () => {
         const invalidPayload = await createInvalidExitCodePayload(
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
         );
 
         await expect(
-          fastAdapter.updatePriceFeeds([invalidPayload]),
-        ).to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
+          sedaPythAdapter.updatePriceFeeds([invalidPayload]),
+        ).to.be.revertedWithCustomError(sedaPythAdapter, "InvalidSedaResult");
       });
 
       it("Should revert with empty batch", async () => {
         const emptyPayload = await createEmptyBatchPayload(trustedKey, btcDrId);
 
         await expect(
-          fastAdapter.updatePriceFeeds([emptyPayload]),
-        ).to.be.revertedWithCustomError(fastAdapter, "InvalidResult");
+          sedaPythAdapter.updatePriceFeeds([emptyPayload]),
+        ).to.be.revertedWithCustomError(sedaPythAdapter, "InvalidResult");
       });
 
       it("Should prevent replay: same result cannot update a different feed", async () => {
-        const ethRawId = ethers.id("ETH/USD");
+        const ethSymbolId = ethers.id("ETH/USD");
 
         const btcUpdate = await createValidUpdateData(
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           50000n,
           100n,
         );
 
-        await fastAdapter.updatePriceFeeds([btcUpdate]);
+        await sedaPythAdapter.updatePriceFeeds([btcUpdate]);
 
         // A feedId derived from a different drId has no stored price.
-        const ethFeedId = computeFeedId(ethers.id("eth_dr_id"), ethRawId);
+        const ethFeedId = computeFeedId(ethers.id("eth_dr_id"), ethSymbolId);
         await expect(
-          fastAdapter.getPriceUnsafe(ethFeedId),
-        ).to.be.revertedWithCustomError(fastAdapter, "PriceFeedNotFound");
+          sedaPythAdapter.getPriceUnsafe(ethFeedId),
+        ).to.be.revertedWithCustomError(sedaPythAdapter, "PriceFeedNotFound");
       });
     });
 
@@ -321,10 +321,10 @@ describe("FastAdapter", () => {
         const newTime = Math.floor(Date.now() / 1000);
 
         await submitPriceUpdate(
-          fastAdapter,
+          sedaPythAdapter,
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           40000n,
           100n,
           oldTime,
@@ -333,19 +333,19 @@ describe("FastAdapter", () => {
         const updateData = await createValidUpdateData(
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           50000n,
           100n,
           newTime,
         );
 
-        await fastAdapter.updatePriceFeedsIfNecessary(
+        await sedaPythAdapter.updatePriceFeedsIfNecessary(
           [updateData],
           [btcFeedId],
           [newTime],
         );
 
-        const price = await fastAdapter.getPriceUnsafe(btcFeedId);
+        const price = await sedaPythAdapter.getPriceUnsafe(btcFeedId);
         expect(price.price).to.equal(50000n);
       });
 
@@ -354,10 +354,10 @@ describe("FastAdapter", () => {
         const newerTime = Math.floor(Date.now() / 1000);
 
         await submitPriceUpdate(
-          fastAdapter,
+          sedaPythAdapter,
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           50000n,
           100n,
           newerTime,
@@ -366,19 +366,19 @@ describe("FastAdapter", () => {
         const updateData = await createValidUpdateData(
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           40000n,
           100n,
           oldTime,
         );
 
         await expect(
-          fastAdapter.updatePriceFeedsIfNecessary(
+          sedaPythAdapter.updatePriceFeedsIfNecessary(
             [updateData],
             [btcFeedId],
             [oldTime],
           ),
-        ).to.be.revertedWithCustomError(fastAdapter, "NoFreshUpdate");
+        ).to.be.revertedWithCustomError(sedaPythAdapter, "NoFreshUpdate");
       });
     });
 
@@ -388,13 +388,13 @@ describe("FastAdapter", () => {
         const updateData = await createValidUpdateData(
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           50000n,
           100n,
           pastTime,
         );
 
-        const priceFeeds = await fastAdapter.parsePriceFeedUpdates.staticCall(
+        const priceFeeds = await sedaPythAdapter.parsePriceFeedUpdates.staticCall(
           [updateData],
           [btcFeedId],
           0,
@@ -410,13 +410,13 @@ describe("FastAdapter", () => {
         const updateData = await createValidUpdateData(
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           50000n,
           100n,
         );
 
         const [priceFeeds, slots] =
-          await fastAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
+          await sedaPythAdapter.parsePriceFeedUpdatesWithConfig.staticCall(
             [updateData],
             [btcFeedId],
             0,
@@ -434,17 +434,17 @@ describe("FastAdapter", () => {
       });
 
       it("Should revert when paused and trying to store", async () => {
-        await fastAdapter.pause();
+        await sedaPythAdapter.pause();
         const updateData = await createValidUpdateData(
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           50000n,
           100n,
         );
 
         await expect(
-          fastAdapter.parsePriceFeedUpdatesWithConfig(
+          sedaPythAdapter.parsePriceFeedUpdatesWithConfig(
             [updateData],
             [btcFeedId],
             0,
@@ -453,57 +453,57 @@ describe("FastAdapter", () => {
             false,
             true,
           ),
-        ).to.be.revertedWithCustomError(fastAdapter, "EnforcedPause");
+        ).to.be.revertedWithCustomError(sedaPythAdapter, "EnforcedPause");
       });
     });
   });
 
   describe("IPyth Interface Compliance", () => {
-    let fastAdapter: FastAdapter;
+    let sedaPythAdapter: SedaPythAdapter;
     let fastProver: FastProver;
     let trustedKey: Wallet;
     let btcDrId: string;
-    let btcRawId: string;
+    let btcSymbolId: string;
     let btcFeedId: string;
 
     beforeEach(async () => {
-      const fixture = await loadFixture(deployFastAdapterFixture);
-      fastAdapter = fixture.fastAdapter;
+      const fixture = await loadFixture(deploySedaPythAdapterFixture);
+      sedaPythAdapter = fixture.sedaPythAdapter;
       fastProver = fixture.fastProver;
 
       trustedKey = createTrustedKey();
       await fastProver.addTrustedKey(trustedKey.address);
 
       btcDrId = ethers.id("btc_dr_id");
-      btcRawId = ethers.id("BTC/USD");
-      btcFeedId = computeFeedId(btcDrId, btcRawId);
+      btcSymbolId = ethers.id("BTC/USD");
+      btcFeedId = computeFeedId(btcDrId, btcSymbolId);
     });
 
     describe("Price Retrieval Functions", () => {
       it("Should return prices for existing assets and revert for non-existent ones", async () => {
         await submitPriceUpdate(
-          fastAdapter,
+          sedaPythAdapter,
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           50000n,
           100n,
         );
 
-        const price = await fastAdapter.getPriceUnsafe(btcFeedId);
+        const price = await sedaPythAdapter.getPriceUnsafe(btcFeedId);
         expect(price.price).to.equal(50000n);
         expect(price.conf).to.equal(100n);
         expect(price.expo).to.equal(-8);
         expect(price.publishTime).to.be.greaterThan(0);
 
-        const emaPrice = await fastAdapter.getEmaPriceUnsafe(btcFeedId);
+        const emaPrice = await sedaPythAdapter.getEmaPriceUnsafe(btcFeedId);
         expect(emaPrice.price).to.equal(50000n);
         expect(emaPrice.conf).to.equal(100n);
 
         const nonExistentId = ethers.id("non_existent");
         await expect(
-          fastAdapter.getPriceUnsafe(nonExistentId),
-        ).to.be.revertedWithCustomError(fastAdapter, "PriceFeedNotFound");
+          sedaPythAdapter.getPriceUnsafe(nonExistentId),
+        ).to.be.revertedWithCustomError(sedaPythAdapter, "PriceFeedNotFound");
       });
     });
 
@@ -511,40 +511,40 @@ describe("FastAdapter", () => {
       it("Should return prices within age limits", async () => {
         const pastTime = createPastTimestamp(10);
         await submitPriceUpdate(
-          fastAdapter,
+          sedaPythAdapter,
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           50000n,
           100n,
           pastTime,
         );
 
-        const price = await fastAdapter.getPriceNoOlderThan(btcFeedId, 86400);
+        const price = await sedaPythAdapter.getPriceNoOlderThan(btcFeedId, 86400);
         expect(price.price).to.equal(50000n);
       });
 
       it("Should revert for stale prices", async () => {
         const oldTime = createPastTimestamp(3700);
         await submitPriceUpdate(
-          fastAdapter,
+          sedaPythAdapter,
           trustedKey,
           btcDrId,
-          btcRawId,
+          btcSymbolId,
           50000n,
           100n,
           oldTime,
         );
 
         await expect(
-          fastAdapter.getPriceNoOlderThan(btcFeedId, 3600),
-        ).to.be.revertedWithCustomError(fastAdapter, "StalePrice");
+          sedaPythAdapter.getPriceNoOlderThan(btcFeedId, 3600),
+        ).to.be.revertedWithCustomError(sedaPythAdapter, "StalePrice");
       });
     });
 
     describe("Fee and TWAP Functions", () => {
       it("Should return zero fee", async () => {
-        const fee = await fastAdapter.getUpdateFee([
+        const fee = await sedaPythAdapter.getUpdateFee([
           ethers.toUtf8Bytes("test"),
         ]);
         expect(fee).to.equal(0);
@@ -552,16 +552,16 @@ describe("FastAdapter", () => {
 
       it("Should revert TWAP functions with NotImplemented", async () => {
         await expect(
-          fastAdapter.getTwapUpdateFee([ethers.toUtf8Bytes("test")]),
-        ).to.be.revertedWithCustomError(fastAdapter, "TwapNotImplemented");
+          sedaPythAdapter.getTwapUpdateFee([ethers.toUtf8Bytes("test")]),
+        ).to.be.revertedWithCustomError(sedaPythAdapter, "TwapNotImplemented");
       });
     });
   });
 
   describe("Security", () => {
     it("Should reject ETH sent to update functions", async () => {
-      const { fastAdapter, fastProver } = await loadFixture(
-        deployFastAdapterFixture,
+      const { sedaPythAdapter, fastProver } = await loadFixture(
+        deploySedaPythAdapterFixture,
       );
       const trustedKey = createTrustedKey();
       await fastProver.addTrustedKey(trustedKey.address);
@@ -578,43 +578,43 @@ describe("FastAdapter", () => {
       );
 
       await expect(
-        fastAdapter.updatePriceFeeds([updateData], {
+        sedaPythAdapter.updatePriceFeeds([updateData], {
           value: ethers.parseEther("1"),
         }),
-      ).to.be.revertedWithCustomError(fastAdapter, "InvalidArgument");
+      ).to.be.revertedWithCustomError(sedaPythAdapter, "InvalidArgument");
     });
 
     it("Should upgrade and preserve state", async () => {
-      const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
-      const initialProver = await fastAdapter.getProver();
+      const { sedaPythAdapter } = await loadFixture(deploySedaPythAdapterFixture);
+      const initialProver = await sedaPythAdapter.getProver();
 
-      const FastAdapterV2 = await ethers.getContractFactory("FastAdapter");
+      const SedaPythAdapterV2 = await ethers.getContractFactory("SedaPythAdapter");
       const upgradedContract = await upgrades.upgradeProxy(
-        fastAdapter,
-        FastAdapterV2,
+        sedaPythAdapter,
+        SedaPythAdapterV2,
       );
 
       expect(await upgradedContract.getProver()).to.equal(initialProver);
     });
 
     it("Should revert when trying to reinitialize", async () => {
-      const { fastAdapter, owner } = await loadFixture(
-        deployFastAdapterFixture,
+      const { sedaPythAdapter, owner } = await loadFixture(
+        deploySedaPythAdapterFixture,
       );
 
       await expect(
-        fastAdapter.initialize(
-          await fastAdapter.getProver(),
+        sedaPythAdapter.initialize(
+          await sedaPythAdapter.getProver(),
           await owner.getAddress(),
         ),
-      ).to.be.revertedWithCustomError(fastAdapter, "InvalidInitialization");
+      ).to.be.revertedWithCustomError(sedaPythAdapter, "InvalidInitialization");
     });
   });
 
   describe("Edge Cases & Utilities", () => {
     it("Should return empty asset IDs initially", async () => {
-      const { fastAdapter } = await loadFixture(deployFastAdapterFixture);
-      const assetIds = await fastAdapter.getAssetIds();
+      const { sedaPythAdapter } = await loadFixture(deploySedaPythAdapterFixture);
+      const assetIds = await sedaPythAdapter.getAssetIds();
       expect(assetIds.length).to.equal(0);
     });
   });

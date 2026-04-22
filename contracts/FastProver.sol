@@ -2,23 +2,16 @@
 pragma solidity ^0.8.28;
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {BaseUpgradeable} from "../base/BaseUpgradeable.sol";
-import {FastProverStorage} from "../storage/FastProverStorage.sol";
+import {BaseUpgradeable} from "./base/BaseUpgradeable.sol";
+import {FastProverStorage} from "./storage/FastProverStorage.sol";
 
-/// @title SedaFastProver
+/// @title FastProver
 /// @author Open Oracle Association
-/// @notice A UUPS upgradeable, pausable, and ownable contract for verifying price feed data
-///         using ECDSA signatures from trusted FAST keys
-/// @dev This contract is specifically designed for the SEDA price feed adapter system. It manages
-///      multiple trusted public keys and provides data verification using ECDSA signatures.
-///      The contract focuses on verifying price data hashes, which is the primary use case for
-///      the price feed adapter. It implements the UUPS upgrade pattern for upgradeability,
-///      includes pausable functionality for emergency situations, and provides ownable
-///      access control for administrative functions.
-/// @custom:security This contract inherits from OpenZeppelin's upgradeable contracts and includes
-///                   validation of ECDSA signatures and administrative controls. The contract is pausable
-///                   and only the owner can perform administrative functions.
-/// @custom:upgrades This contract uses UUPS upgrade pattern for upgradeability.
+/// @notice UUPS upgradeable, pausable, ownable prover that verifies SEDA FAST attestations via ECDSA.
+/// @dev Manages a set of trusted signer addresses and exposes a view that recovers the signer
+///      from a `(dataHash, signature)` pair and asserts it is currently trusted.
+/// @custom:security Administrative functions are onlyOwner. The contract is pausable for emergencies.
+/// @custom:upgrades UUPS upgrade pattern.
 contract FastProver is BaseUpgradeable {
     using ECDSA for bytes32;
 
@@ -78,7 +71,6 @@ contract FastProver is BaseUpgradeable {
 
         s.trustedKeys[key] = true;
         s.trustedKeysList.push(key);
-        s.keyExists[key] = true;
 
         emit TrustedKeyAdded(key, msg.sender);
     }
@@ -92,7 +84,6 @@ contract FastProver is BaseUpgradeable {
         }
 
         s.trustedKeys[key] = false;
-        s.keyExists[key] = false;
 
         // Remove from array by swapping with last element and popping
         for (uint256 i = 0; i < s.trustedKeysList.length; ++i) {
@@ -159,7 +150,6 @@ contract FastProver is BaseUpgradeable {
 
         address signer = messageHash.recover(sig);
 
-        // Check if the signer is a trusted key
         if (!FastProverStorage.layout().trustedKeys[signer]) {
             revert SignatureVerificationFailed(signer);
         }
