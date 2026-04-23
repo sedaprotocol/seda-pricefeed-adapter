@@ -162,6 +162,50 @@ export async function createValidUpdateData(
   return encodeAndSign(result, trustedKey);
 }
 
+/** One signed blob with multiple `SedaPriceUpdate` rows (same `drId`, one tally `result`). */
+export async function createValidUpdateDataMulti(
+  trustedKey: Wallet,
+  drId: string,
+  rows: Array<{
+    symbolId: string;
+    price: bigint;
+    conf: bigint;
+    publishTime: number;
+    expo?: number;
+  }>,
+): Promise<string> {
+  const expo = rows[0]?.expo ?? -8;
+  const resultBytes = encodeSedaPriceUpdates(
+    rows.map((r) => ({
+      symbolId: r.symbolId,
+      priceInfo: {
+        publishTime: r.publishTime,
+        expo: r.expo ?? expo,
+        price: r.price,
+        conf: r.conf,
+        emaPrice: r.price,
+        emaConf: r.conf,
+      },
+    })),
+  );
+
+  const blockTs = Math.max(...rows.map((r) => r.publishTime));
+  const result = {
+    drId,
+    gasUsed: 100000,
+    blockHeight: 0,
+    blockTimestamp: blockTs,
+    consensus: true,
+    exitCode: 0,
+    version: SEDA_VERSION,
+    result: resultBytes,
+    paybackAddress: "0x",
+    sedaPayload: "0x",
+  };
+
+  return encodeAndSign(result, trustedKey);
+}
+
 // Helper function to create invalid exit code payload
 export async function createInvalidExitCodePayload(
   trustedKey: Wallet,

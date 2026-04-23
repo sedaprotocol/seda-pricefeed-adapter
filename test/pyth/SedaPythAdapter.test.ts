@@ -11,6 +11,7 @@ import {
   createPastTimestamp,
   createTrustedKey,
   createValidUpdateData,
+  createValidUpdateDataMulti,
   submitPriceUpdate,
 } from "../helpers";
 
@@ -472,6 +473,123 @@ describe("SedaPythAdapter", () => {
           ),
         ).to.be.revertedWithCustomError(sedaPythAdapter, "EnforcedPause");
       });
+
+      it("Should ignore extra symbols in blob when parsing a subset of feeds", async () => {
+        const ethSymbolId = ethers.id("ETH/USD");
+        const ethFeedId = computeFeedId(btcDrId, ethSymbolId);
+        const tBtc = createPastTimestamp(200);
+        const tEth = createPastTimestamp(150);
+        const maxT = Math.floor(Date.now() / 1000) + 3600;
+
+        const updateData = await createValidUpdateDataMulti(
+          trustedKey,
+          btcDrId,
+          [
+            {
+              symbolId: btcSymbolId,
+              price: 50000n,
+              conf: 100n,
+              publishTime: tBtc,
+            },
+            {
+              symbolId: ethSymbolId,
+              price: 3000n,
+              conf: 50n,
+              publishTime: tEth,
+            },
+          ],
+        );
+
+        const priceFeeds =
+          await sedaPythAdapter.parsePriceFeedUpdates.staticCall(
+            [updateData],
+            [btcFeedId],
+            0,
+            maxT,
+          );
+
+        expect(priceFeeds).to.have.length(1);
+        expect(priceFeeds[0].id).to.equal(btcFeedId);
+        expect(priceFeeds[0].price.price).to.equal(50000n);
+        await expect(
+          sedaPythAdapter.getPriceUnsafe(ethFeedId),
+        ).to.be.revertedWithCustomError(sedaPythAdapter, "PriceFeedNotFound");
+      });
+
+      it("Should revert on strict minimality when blob decodes more updates than requested ids", async () => {
+        const ethSymbolId = ethers.id("ETH/USD");
+        const tBtc = createPastTimestamp(200);
+        const tEth = createPastTimestamp(150);
+        const maxT = Math.floor(Date.now() / 1000) + 3600;
+
+        const updateData = await createValidUpdateDataMulti(
+          trustedKey,
+          btcDrId,
+          [
+            {
+              symbolId: btcSymbolId,
+              price: 50000n,
+              conf: 100n,
+              publishTime: tBtc,
+            },
+            {
+              symbolId: ethSymbolId,
+              price: 3000n,
+              conf: 50n,
+              publishTime: tEth,
+            },
+          ],
+        );
+
+        await expect(
+          sedaPythAdapter.parsePriceFeedUpdatesWithConfig(
+            [updateData],
+            [btcFeedId],
+            0,
+            maxT,
+            false,
+            true,
+            false,
+          ),
+        ).to.be.revertedWithCustomError(sedaPythAdapter, "InvalidArgument");
+      });
+
+      it("Should parsePriceFeedUpdatesUnique and keep earliest publish time in window", async () => {
+        const tEarly = createPastTimestamp(400);
+        const tLate = createPastTimestamp(100);
+        const maxT = Math.floor(Date.now() / 1000) + 3600;
+
+        const updateData = await createValidUpdateDataMulti(
+          trustedKey,
+          btcDrId,
+          [
+            {
+              symbolId: btcSymbolId,
+              price: 99999n,
+              conf: 1n,
+              publishTime: tLate,
+            },
+            {
+              symbolId: btcSymbolId,
+              price: 50000n,
+              conf: 100n,
+              publishTime: tEarly,
+            },
+          ],
+        );
+
+        const priceFeeds =
+          await sedaPythAdapter.parsePriceFeedUpdatesUnique.staticCall(
+            [updateData],
+            [btcFeedId],
+            0,
+            maxT,
+          );
+
+        expect(priceFeeds).to.have.length(1);
+        expect(priceFeeds[0].price.price).to.equal(50000n);
+        expect(priceFeeds[0].price.publishTime).to.equal(BigInt(tEarly));
+      });
     });
   });
 
@@ -560,6 +678,43 @@ describe("SedaPythAdapter", () => {
           sedaPythAdapter.getPriceNoOlderThan(btcFeedId, 3600),
         ).to.be.revertedWithCustomError(sedaPythAdapter, "StalePrice");
       });
+
+      it("Should return EMA prices within age limits", async () => {
+        const pastTime = createPastTimestamp(10);
+        await submitPriceUpdate(
+          sedaPythAdapter,
+          trustedKey,
+          btcDrId,
+          btcSymbolId,
+          50000n,
+          100n,
+          pastTime,
+        );
+
+        const ema = await sedaPythAdapter.getEmaPriceNoOlderThan(
+          btcFeedId,
+          86400,
+        );
+        expect(ema.price).to.equal(50000n);
+        expect(ema.conf).to.equal(100n);
+      });
+
+      it("Should revert EMA getter for stale prices", async () => {
+        const oldTime = createPastTimestamp(3700);
+        await submitPriceUpdate(
+          sedaPythAdapter,
+          trustedKey,
+          btcDrId,
+          btcSymbolId,
+          50000n,
+          100n,
+          oldTime,
+        );
+
+        await expect(
+          sedaPythAdapter.getEmaPriceNoOlderThan(btcFeedId, 3600),
+        ).to.be.revertedWithCustomError(sedaPythAdapter, "StalePrice");
+      });
     });
 
     describe("Fee and TWAP Functions", () => {
@@ -573,6 +728,13 @@ describe("SedaPythAdapter", () => {
       it("Should revert TWAP functions with NotImplemented", async () => {
         await expect(
           sedaPythAdapter.getTwapUpdateFee([ethers.toUtf8Bytes("test")]),
+        ).to.be.revertedWithCustomError(sedaPythAdapter, "TwapNotImplemented");
+
+        await expect(
+          sedaPythAdapter.parseTwapPriceFeedUpdates(
+            [ethers.toUtf8Bytes("a")],
+            [btcFeedId],
+          ),
         ).to.be.revertedWithCustomError(sedaPythAdapter, "TwapNotImplemented");
       });
     });
