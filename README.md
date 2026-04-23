@@ -86,18 +86,19 @@ PythStructs.Price memory p2 = pyth.getPriceNoOlderThan(feedId, maxAgeSeconds);
 ### Quality gates
 
 ```bash
-bun run check           # lint + Solidity format check
-bun run lint            # TypeScript (Biome) + Solidity (solhint)
-bun run lint:ts:fix
-bun run lint:sol:fix
-bun run format:sol:fix
+bun run check           # solhint + Prettier (Solidity) check + Biome check (same as CI)
+bun run check:sol       # Solidity only: solhint + prettier --check
+bun run check:ts        # TypeScript only: biome check
+bun run fix             # apply fix:sol then fix:ts
+bun run fix:sol         # solhint --fix + prettier --write on *.sol
+bun run fix:ts          # biome --write --unsafe
 ```
 
 ### Tests with reporting
 
 ```bash
 bun run test:gas        # REPORT_GAS=true
-bun run test:coverage   # COVERAGE=true + hardhat coverage
+bun run test:coverage   # hardhat coverage
 ```
 
 ### Cleanup
