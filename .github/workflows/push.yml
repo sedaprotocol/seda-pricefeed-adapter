@@ -15,14 +15,16 @@ jobs:
       - name: "Check out the repo 📥"
         uses: "actions/checkout@v4"
 
-      - name: "Install Bun 🥟"
-        uses: "oven-sh/setup-bun@v1"
+      - name: "Set up Bun"
+        uses: "oven-sh/setup-bun@v2"
+        with:
+          bun-version-file: ".bun-version"
 
-      - name: "Install the dependencies 📦"
-        run: "bun install"
+      - name: "Install dependencies"
+        run: "bun install --frozen-lockfile"
 
-      - name: "Lint TypeScript & Solidity 🧹"
-        run: "bun run lint"
+      - name: "Check TypeScript & Solidity 🧹"
+        run: "bun run check"
 
       - name: "Compile the contracts 🛠️"
         run: "bun run compile"
@@ -40,8 +42,8 @@ jobs:
             echo ""
             echo "| File | % Stmts | % Branch | % Funcs | % Lines | Uncovered Lines |"
             echo "|:-----|----------|----------|----------|----------|----------------|"
-            awk '/^-+\|/,/^-+\|$/' coverage-report.txt | 
-            grep -v '^-' | grep -v '^|$' | grep -v '^File' | grep -v 'Istanbul' | 
+            awk '/^-+\|/,/^-+\|$/' coverage-report.txt |
+            grep -v '^-' | grep -v '^|$' | grep -v '^File' | grep -v 'Istanbul' |
             sed 's/^| //; s/ |$//; s/ | /|/g; s/^All files/**All files**/'
             echo ""
           } > code-coverage-results.md

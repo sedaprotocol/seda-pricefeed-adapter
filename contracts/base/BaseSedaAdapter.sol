@@ -29,6 +29,8 @@ abstract contract BaseSedaAdapter is BaseUpgradeable {
     // ============ Events ============
 
     /// @notice Emitted when the SEDA prover address is updated by the owner
+    /// @param oldProver Previous FastProver address that was trusted
+    /// @param newProver New FastProver address now trusted on this adapter
     event ProverUpdated(address indexed oldProver, address indexed newProver);
 
     // ============ Errors ============
@@ -77,7 +79,10 @@ abstract contract BaseSedaAdapter is BaseUpgradeable {
     /// @dev `feedId = keccak256(abi.encode(drId, symbolId))`. Namespacing by `drId` means that
     ///      changing the underlying batch definition (which changes the `drId`) rekeys every feed
     ///      in it.
-    function _computeFeedId(bytes32 drId, bytes32 symbolId) internal pure returns (bytes32) {
+    /// @param drId The SEDA data request id that scopes this execution
+    /// @param symbolId The per-symbol identifier carried in each price update entry
+    /// @return feedId Canonical feed key for `(drId, symbolId)`
+    function _computeFeedId(bytes32 drId, bytes32 symbolId) internal pure returns (bytes32 feedId) {
         return keccak256(abi.encode(drId, symbolId));
     }
 

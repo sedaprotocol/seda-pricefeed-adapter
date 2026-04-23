@@ -1,3 +1,3 @@
 module.exports = {
-  skipFiles: ["interfaces/", "libraries/", "mocks/", "test/"],
+  skipFiles: ["pyth/external/"],
 };

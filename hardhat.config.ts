@@ -11,7 +11,9 @@ const config: HardhatUserConfig = {
       viaIR: true,
       optimizer: {
         enabled: true,
-        runs: 200,
+        // Higher runs favor runtime gas on hot paths (e.g. updatePriceFeeds); lowers optimizer
+        // emphasis on bytecode size. Revisit if `bun run size` approaches the contract limit.
+        runs: 10_000,
       },
     },
   },
@@ -35,7 +37,6 @@ const config: HardhatUserConfig = {
   },
   gasReporter: {
     enabled: process.env.REPORT_GAS !== undefined,
-    currency: "USD",
   },
   contractSizer: {
     alphaSort: true,

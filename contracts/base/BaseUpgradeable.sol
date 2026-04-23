@@ -32,7 +32,6 @@ abstract contract BaseUpgradeable is Initializable, OwnableUpgradeable, UUPSUpgr
         // solhint-disable-previous-line func-name-mixedcase
         if (owner == address(0)) revert ZeroAddressNotAllowed("owner");
         __Ownable_init(owner);
-        __UUPSUpgradeable_init();
         __Pausable_init();
     }
 

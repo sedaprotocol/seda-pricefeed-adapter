@@ -1,4 +1,1 @@
-contracts/interfaces/aggregator/**
-contracts/interfaces/pyth/**
-contracts/mocks/**
-contracts/test/**
+contracts/pyth/external/**

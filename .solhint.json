@@ -2,12 +2,12 @@
   "extends": "solhint:recommended",
   "rules": {
     "compiler-version": ["error", "^0.8.28"],
-    "func-visibility": ["warn", { "ignoreConstructors": true }],
+    "func-visibility": ["error", { "ignoreConstructors": true }],
     "max-line-length": ["error", 120],
     "not-rely-on-time": "warn",
     "no-empty-blocks": "warn",
     "no-inline-assembly": "warn",
-    "no-unused-vars": "warn",
+    "no-unused-vars": "error",
     "reentrancy": "warn"
   }
 }

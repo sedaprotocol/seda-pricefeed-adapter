@@ -24,7 +24,7 @@ This shape is interim: changing the batch (adding or removing a symbol) changes 
 ## Prerequisites
 
 - [Bun](https://bun.sh)
-- `DEPLOYER_PRIVATE_KEY` for testnet deploys, `BASESCAN_API_KEY` for Base Sepolia verification (see `hardhat.config.ts`)
+- **Base Sepolia (example):** `DEPLOYER_PRIVATE_KEY`; optional `BASE_SEPOLIA_RPC_URL`; `BASESCAN_API_KEY` if you verify contracts (see `hardhat.config.ts`)
 
 ## Quick start
 
@@ -41,6 +41,8 @@ The repository ships a single deployment script that deploys FastProver and Seda
 ```bash
 bunx hardhat run scripts/deploy-seda-pyth.ts --network baseSepolia
 ```
+
+You can also use `--network local` against a node at `http://127.0.0.1:8545` (see `hardhat.config.ts`). Add other networks there as needed.
 
 The script prints the two proxy addresses and the trusted key on completion.
 
