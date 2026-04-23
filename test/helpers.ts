@@ -242,6 +242,42 @@ export async function createInvalidExitCodePayload(
   return encodeAndSign(result, trustedKey);
 }
 
+/** Signed payload with `consensus == false` (signature still valid for `deriveResultId`). */
+export async function createNonConsensusPayload(
+  trustedKey: Wallet,
+  drId: string,
+  symbolId: string,
+): Promise<string> {
+  const resultBytes = encodeSedaPriceUpdates([
+    {
+      symbolId,
+      priceInfo: {
+        publishTime: Math.floor(Date.now() / 1000),
+        expo: -8,
+        price: 50000n,
+        conf: 100n,
+        emaPrice: 50000n,
+        emaConf: 100n,
+      },
+    },
+  ]);
+
+  const result = {
+    drId,
+    gasUsed: 100000,
+    blockHeight: 0,
+    blockTimestamp: Math.floor(Date.now() / 1000),
+    consensus: false,
+    exitCode: 0,
+    version: SEDA_VERSION,
+    result: resultBytes,
+    paybackAddress: "0x",
+    sedaPayload: "0x",
+  };
+
+  return encodeAndSign(result, trustedKey);
+}
+
 // Helper function to create an empty-updates payload (0 feeds)
 export async function createEmptyUpdatesPayload(
   trustedKey: Wallet,

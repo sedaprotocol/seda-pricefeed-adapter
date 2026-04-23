@@ -318,5 +318,32 @@ describe("FastProver", () => {
         .to.be.revertedWithCustomError(fastProver, "OwnableUnauthorizedAccount")
         .withArgs(user.address);
     });
+
+    it("Should revert upgrade to zero implementation", async () => {
+      const { fastProver, owner } = await loadFixture(deployFastProverFixture);
+
+      await expect(
+        fastProver.connect(owner).upgradeToAndCall(ethers.ZeroAddress, "0x"),
+      )
+        .to.be.revertedWithCustomError(fastProver, "ZeroAddressNotAllowed")
+        .withArgs("implementation");
+    });
+  });
+
+  describe("Pausable edge cases", () => {
+    it("Should revert second pause when already paused", async () => {
+      const { fastProver, owner } = await loadFixture(deployFastProverFixture);
+      await fastProver.connect(owner).pause();
+      await expect(
+        fastProver.connect(owner).pause(),
+      ).to.be.revertedWithCustomError(fastProver, "EnforcedPause");
+    });
+
+    it("Should revert unpause when not paused", async () => {
+      const { fastProver, owner } = await loadFixture(deployFastProverFixture);
+      await expect(
+        fastProver.connect(owner).unpause(),
+      ).to.be.revertedWithCustomError(fastProver, "ExpectedPause");
+    });
   });
 });
