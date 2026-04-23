@@ -1,29 +1,29 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-/// @title FastProverStorage
+/// @title SedaAdapterStorage
 /// @author Open Oracle Association
-/// @notice Storage library for FastProver using the ERC-7201 storage pattern.
-/// @dev Storage layout for trusted keys management in FastProver, separate from other contracts.
-/// @custom:storage-location fastprover.storage.v1
-library FastProverStorage {
+/// @notice Storage library for SEDA-aware adapters using the ERC-7201 storage pattern.
+/// @dev Holds state shared by any adapter that verifies SEDA FAST oracle results (prover address,
+///      future extensions). Decoupled from any concrete price-feed interface so both Pyth-style
+///      and Chainlink-style adapters can reuse it.
+/// @custom:storage-location sedaadapter.storage.v1
+library SedaAdapterStorage {
     // ============ Constants ============
 
-    /// @notice ERC-7201 storage slot for FastProverStorage (version 1)
-    /// @dev Namespace: "fastprover.storage.v1"
+    /// @notice ERC-7201 storage slot for SedaAdapterStorage (version 1)
+    /// @dev Namespace: "sedaadapter.storage.v1"
     ///      ERC-7201 calculation: keccak256(abi.encode(uint256(keccak256(namespace)) - 1)) & ~bytes32(uint256(0xff))
     bytes32 internal constant STORAGE_SLOT_V1 =
-        keccak256(abi.encode(uint256(keccak256("fastprover.storage.v1")) - 1)) & ~bytes32(uint256(0xff));
+        keccak256(abi.encode(uint256(keccak256("sedaadapter.storage.v1")) - 1)) & ~bytes32(uint256(0xff));
 
     // ============ Structs ============
 
-    /// @notice Storage layout for FastProverStorage (v1)
+    /// @notice Storage layout for SedaAdapterStorage (v1)
     /// @dev Do not change the order of fields. For new fields, create a new versioned layout.
     struct Layout {
-        /// @notice Mapping of trusted public keys to their enabled status
-        mapping(address => bool) trustedKeys;
-        /// @notice Array of all trusted public keys for enumeration
-        address[] trustedKeysList;
+        /// @notice The SEDA FAST prover contract used for result verification
+        address prover;
     }
 
     // ============ Functions ============

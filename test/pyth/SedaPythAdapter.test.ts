@@ -2,17 +2,17 @@ import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import type { Wallet } from "ethers";
 import { ethers, upgrades } from "hardhat";
+import type { FastProver } from "../../typechain-types/contracts/prover/FastProver";
 import type { SedaPythAdapter } from "../../typechain-types/contracts/SedaPythAdapter";
-import type { FastProver } from "../../typechain-types/contracts/FastProver";
 import {
   computeFeedId,
-  createEmptyBatchPayload,
+  createEmptyUpdatesPayload,
   createInvalidExitCodePayload,
   createPastTimestamp,
+  createTrustedKey,
   createValidUpdateData,
   submitPriceUpdate,
-} from "../helpers/priceFeedHelpers";
-import { createTrustedKey } from "../helpers/proverHelpers";
+} from "../helpers";
 
 describe("SedaPythAdapter", () => {
   // Fixture function
@@ -57,7 +57,8 @@ describe("SedaPythAdapter", () => {
         { initializer: "initialize" },
       )) as unknown as FastProver;
 
-      const SedaPythAdapter = await ethers.getContractFactory("SedaPythAdapter");
+      const SedaPythAdapter =
+        await ethers.getContractFactory("SedaPythAdapter");
       await expect(
         upgrades.deployProxy(
           SedaPythAdapter,
@@ -71,11 +72,16 @@ describe("SedaPythAdapter", () => {
 
     it("Should not initialize with zero prover address", async () => {
       const [owner] = await ethers.getSigners();
-      const SedaPythAdapter = await ethers.getContractFactory("SedaPythAdapter");
+      const SedaPythAdapter =
+        await ethers.getContractFactory("SedaPythAdapter");
       await expect(
-        upgrades.deployProxy(SedaPythAdapter, [ethers.ZeroAddress, owner.address], {
-          initializer: "initialize",
-        }),
+        upgrades.deployProxy(
+          SedaPythAdapter,
+          [ethers.ZeroAddress, owner.address],
+          {
+            initializer: "initialize",
+          },
+        ),
       )
         .to.be.revertedWithCustomError(SedaPythAdapter, "ZeroAddressNotAllowed")
         .withArgs("prover");
@@ -97,7 +103,9 @@ describe("SedaPythAdapter", () => {
           { initializer: "initialize" },
         );
 
-        await expect(sedaPythAdapter.updateProver(await newFastProver.getAddress()))
+        await expect(
+          sedaPythAdapter.updateProver(await newFastProver.getAddress()),
+        )
           .to.emit(sedaPythAdapter, "ProverUpdated")
           .withArgs(
             await fastProver.getAddress(),
@@ -122,10 +130,15 @@ describe("SedaPythAdapter", () => {
       });
 
       it("Should revert when updating prover to zero address", async () => {
-        const { sedaPythAdapter } = await loadFixture(deploySedaPythAdapterFixture);
+        const { sedaPythAdapter } = await loadFixture(
+          deploySedaPythAdapterFixture,
+        );
         await expect(
           sedaPythAdapter.updateProver(ethers.ZeroAddress),
-        ).to.be.revertedWithCustomError(sedaPythAdapter, "ZeroAddressNotAllowed");
+        ).to.be.revertedWithCustomError(
+          sedaPythAdapter,
+          "ZeroAddressNotAllowed",
+        );
       });
     });
 
@@ -238,9 +251,9 @@ describe("SedaPythAdapter", () => {
           100n,
         );
 
-        const assetIds = await sedaPythAdapter.getAssetIds();
-        const assetId = assetIds[0];
-        const initialPriceInfo = await sedaPythAdapter.getPriceInfo(assetId);
+        const feedIds = await sedaPythAdapter.getFeedIds();
+        const feedId = feedIds[0];
+        const initialPriceInfo = await sedaPythAdapter.getPriceInfo(feedId);
 
         await new Promise((resolve) => setTimeout(resolve, 1000));
         await submitPriceUpdate(
@@ -252,7 +265,7 @@ describe("SedaPythAdapter", () => {
           120n,
         );
 
-        const updatedPriceInfo = await sedaPythAdapter.getPriceInfo(assetId);
+        const updatedPriceInfo = await sedaPythAdapter.getPriceInfo(feedId);
         expect(updatedPriceInfo.price).to.equal(51000n);
         expect(updatedPriceInfo.publishTime).to.be.greaterThan(
           initialPriceInfo.publishTime,
@@ -283,11 +296,14 @@ describe("SedaPythAdapter", () => {
 
         await expect(
           sedaPythAdapter.updatePriceFeeds([invalidPayload]),
-        ).to.be.revertedWithCustomError(sedaPythAdapter, "InvalidSedaResult");
+        ).to.be.revertedWithCustomError(sedaPythAdapter, "InvalidResult");
       });
 
-      it("Should revert with empty batch", async () => {
-        const emptyPayload = await createEmptyBatchPayload(trustedKey, btcDrId);
+      it("Should revert with empty updates", async () => {
+        const emptyPayload = await createEmptyUpdatesPayload(
+          trustedKey,
+          btcDrId,
+        );
 
         await expect(
           sedaPythAdapter.updatePriceFeeds([emptyPayload]),
@@ -394,12 +410,13 @@ describe("SedaPythAdapter", () => {
           pastTime,
         );
 
-        const priceFeeds = await sedaPythAdapter.parsePriceFeedUpdates.staticCall(
-          [updateData],
-          [btcFeedId],
-          0,
-          Math.floor(Date.now() / 1000) + 3600,
-        );
+        const priceFeeds =
+          await sedaPythAdapter.parsePriceFeedUpdates.staticCall(
+            [updateData],
+            [btcFeedId],
+            0,
+            Math.floor(Date.now() / 1000) + 3600,
+          );
 
         expect(priceFeeds.length).to.equal(1);
         expect(priceFeeds[0].id).to.equal(btcFeedId);
@@ -520,7 +537,10 @@ describe("SedaPythAdapter", () => {
           pastTime,
         );
 
-        const price = await sedaPythAdapter.getPriceNoOlderThan(btcFeedId, 86400);
+        const price = await sedaPythAdapter.getPriceNoOlderThan(
+          btcFeedId,
+          86400,
+        );
         expect(price.price).to.equal(50000n);
       });
 
@@ -585,10 +605,13 @@ describe("SedaPythAdapter", () => {
     });
 
     it("Should upgrade and preserve state", async () => {
-      const { sedaPythAdapter } = await loadFixture(deploySedaPythAdapterFixture);
+      const { sedaPythAdapter } = await loadFixture(
+        deploySedaPythAdapterFixture,
+      );
       const initialProver = await sedaPythAdapter.getProver();
 
-      const SedaPythAdapterV2 = await ethers.getContractFactory("SedaPythAdapter");
+      const SedaPythAdapterV2 =
+        await ethers.getContractFactory("SedaPythAdapter");
       const upgradedContract = await upgrades.upgradeProxy(
         sedaPythAdapter,
         SedaPythAdapterV2,
@@ -612,10 +635,12 @@ describe("SedaPythAdapter", () => {
   });
 
   describe("Edge Cases & Utilities", () => {
-    it("Should return empty asset IDs initially", async () => {
-      const { sedaPythAdapter } = await loadFixture(deploySedaPythAdapterFixture);
-      const assetIds = await sedaPythAdapter.getAssetIds();
-      expect(assetIds.length).to.equal(0);
+    it("Should return empty feed IDs initially", async () => {
+      const { sedaPythAdapter } = await loadFixture(
+        deploySedaPythAdapterFixture,
+      );
+      const feedIds = await sedaPythAdapter.getFeedIds();
+      expect(feedIds.length).to.equal(0);
     });
   });
 });

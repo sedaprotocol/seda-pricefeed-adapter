@@ -2,23 +2,19 @@
 pragma solidity ^0.8.28;
 
 import {BaseUpgradeable} from "./BaseUpgradeable.sol";
-import {FastProver} from "../FastProver.sol";
-import {SedaDataTypes} from "../libraries/SedaDataTypes.sol";
-import {SedaAdapterStorage} from "../storage/SedaAdapterStorage.sol";
+import {FastProver} from "../prover/FastProver.sol";
+import {SedaDataTypes} from "../prover/SedaDataTypes.sol";
+import {SedaAdapterStorage} from "./SedaAdapterStorage.sol";
 
 /// @title BaseSedaAdapter
 /// @author Open Oracle Association
 /// @notice Shared SEDA verification and decoding logic for price feed adapters.
 /// @dev Encapsulates the wire format, signature verification against a `FastProver`, and
 ///      the canonical `feedId = keccak256(abi.encode(drId, symbolId))` derivation. Subclasses
-///      (e.g. Pyth-style, Chainlink-style) implement the price-feed-specific surface on top.
+///      (e.g. Pyth-style) implement the price-feed-specific surface on top.
 ///
-///      Interim feed identity model. The `feedId` shape is tied to the `drId`, which itself
-///      commits to the full `execInputs` (the batch symbol list). Any change to the batch
-///      produces a new `drId` and therefore new `feedId`s for every symbol in it; consumers
-///      integrating this version effectively hard-code a fixed batch. A future signature
-///      scheme will replace this derivation and consumers will need to migrate their hard-coded
-///      feedIds at that point.
+///      Interim feed IDs: `feedId` is derived from `drId`, which depends on the batch symbol list.
+///      Changing the batch yields new `drId` and `feedId`s; future signature schemes will change this.
 abstract contract BaseSedaAdapter is BaseUpgradeable {
     // ============ Structs ============
 
@@ -39,21 +35,21 @@ abstract contract BaseSedaAdapter is BaseUpgradeable {
 
     /// @notice Thrown when verification or decoding of an oracle result fails
     /// @param reason Human-readable description of the validation failure
-    error InvalidSedaResult(string reason);
+    error InvalidResult(string reason);
 
     // ============ Initialization ============
 
     /// @notice Initializes SEDA-adapter shared state
-    /// @param sedaProverAddress Address of the FastProver contract used for result verification
+    /// @param prover Address of the FastProver contract used for result verification
     /// @param owner Address that will have administrative privileges over the adapter
     // solhint-disable-next-line func-name-mixedcase
-    function __BaseSedaAdapter_init(address sedaProverAddress, address owner) internal onlyInitializing {
-        if (sedaProverAddress == address(0)) revert ZeroAddressNotAllowed("prover");
+    function __BaseSedaAdapter_init(address prover, address owner) internal onlyInitializing {
+        if (prover == address(0)) revert ZeroAddressNotAllowed("prover");
         if (owner == address(0)) revert ZeroAddressNotAllowed("owner");
 
         __BaseUpgradeable_init(owner);
 
-        SedaAdapterStorage.layout().sedaProver = sedaProverAddress;
+        SedaAdapterStorage.layout().prover = prover;
     }
 
     // ============ External Functions ============
@@ -61,10 +57,10 @@ abstract contract BaseSedaAdapter is BaseUpgradeable {
     /// @notice Updates the SEDA prover contract address (owner only)
     /// @param newProver Address of the new SEDA prover contract
     function updateProver(address newProver) external onlyProxy onlyOwner {
-        if (newProver == address(0)) revert ZeroAddressNotAllowed("SEDA prover");
+        if (newProver == address(0)) revert ZeroAddressNotAllowed("prover");
         SedaAdapterStorage.Layout storage s = SedaAdapterStorage.layout();
-        address oldProver = s.sedaProver;
-        s.sedaProver = newProver;
+        address oldProver = s.prover;
+        s.prover = newProver;
         emit ProverUpdated(oldProver, newProver);
     }
 
@@ -72,7 +68,7 @@ abstract contract BaseSedaAdapter is BaseUpgradeable {
 
     /// @notice Returns the SEDA prover contract address
     function getProver() public view returns (address) {
-        return SedaAdapterStorage.layout().sedaProver;
+        return SedaAdapterStorage.layout().prover;
     }
 
     // ============ Internal Helpers ============
@@ -98,13 +94,11 @@ abstract contract BaseSedaAdapter is BaseUpgradeable {
         bytes calldata signedPayload
     ) internal view returns (SedaDataTypes.Result memory result) {
         SignedPayload memory payload = abi.decode(signedPayload, (SignedPayload));
-
         result = abi.decode(payload.data, (SedaDataTypes.Result));
-
         bytes32 resultId = SedaDataTypes.deriveResultId(result);
         FastProver(getProver()).verifyData(resultId, payload.signature);
 
-        if (!result.consensus) revert InvalidSedaResult("Oracle result not in consensus");
-        if (result.exitCode != 0) revert InvalidSedaResult("Oracle execution failed");
+        if (!result.consensus) revert InvalidResult("Oracle result not in consensus");
+        if (result.exitCode != 0) revert InvalidResult("Oracle execution failed");
     }
 }

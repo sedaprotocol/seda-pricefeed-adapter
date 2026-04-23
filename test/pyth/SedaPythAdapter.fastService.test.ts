@@ -3,9 +3,9 @@ import * as path from "node:path";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
+import type { FastProver } from "../../typechain-types/contracts/prover/FastProver";
 import type { SedaPythAdapter } from "../../typechain-types/contracts/SedaPythAdapter";
-import type { FastProver } from "../../typechain-types/contracts/FastProver";
-import { computeFeedId, deriveResultId } from "../helpers/priceFeedHelpers";
+import { computeFeedId, deriveResultId } from "../helpers";
 
 // Real production vector captured from the SEDA FAST service.
 // See ./fast-execution.json — { request, response } captured from the live service.
@@ -69,7 +69,8 @@ describe("SedaPythAdapter — real SEDA FAST production vector", () => {
     )) as unknown as FastProver;
     await fastProver.addTrustedKey(trustedSigner);
 
-    const SedaPythAdapterFactory = await ethers.getContractFactory("SedaPythAdapter");
+    const SedaPythAdapterFactory =
+      await ethers.getContractFactory("SedaPythAdapter");
     const sedaPythAdapter = (await upgrades.deployProxy(
       SedaPythAdapterFactory,
       [await fastProver.getAddress(), owner.address],

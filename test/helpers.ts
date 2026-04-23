@@ -1,6 +1,18 @@
 import type { ContractTransactionResponse, Wallet } from "ethers";
 import { ethers } from "hardhat";
 
+// ============ Key helpers ============
+
+/** Deterministic trusted signer derived from a validator id. */
+export function createTrustedKey(validatorId: string = "validator1"): Wallet {
+  return new ethers.Wallet(ethers.id(validatorId).slice(2, 66));
+}
+
+/** Deterministic untrusted signer (not registered in FastProver). */
+export function createUntrustedKey(): Wallet {
+  return new ethers.Wallet(ethers.id("untrusted").slice(2, 66));
+}
+
 // ABI type for SedaDataTypes.Result
 const RESULT_ABI_TYPE =
   "tuple(bytes32 drId,uint128 gasUsed,uint64 blockHeight,uint64 blockTimestamp,bool consensus,uint8 exitCode,string version,bytes result,bytes paybackAddress,bytes sedaPayload)";
@@ -186,12 +198,12 @@ export async function createInvalidExitCodePayload(
   return encodeAndSign(result, trustedKey);
 }
 
-// Helper function to create empty batch payload (0 feeds)
-export async function createEmptyBatchPayload(
+// Helper function to create an empty-updates payload (0 feeds)
+export async function createEmptyUpdatesPayload(
   trustedKey: Wallet,
   drId: string,
 ): Promise<string> {
-  const resultBytes = encodeSedaPriceUpdates([]); // Empty array
+  const resultBytes = encodeSedaPriceUpdates([]);
 
   const result = {
     drId,

@@ -6,7 +6,7 @@ For architecture details, see [DESIGN.md](DESIGN.md).
 
 ## Overview
 
-The **FastAdapter** (`contracts/FastAdapter.sol`) accepts signed SEDA FAST oracle results, verifies them through the **FastProver** (`contracts/provers/FastProver.sol`), and writes per-feed prices into namespaced storage keyed by `feedId`. Clients read prices through the Pyth interface (`getPriceUnsafe`, `getPriceNoOlderThan`, `parsePriceFeedUpdates`, ...).
+The **SedaPythAdapter** (`contracts/SedaPythAdapter.sol`) accepts signed SEDA FAST oracle results, verifies them through the **FastProver** (`contracts/prover/FastProver.sol`), and writes per-feed prices into namespaced storage keyed by `feedId`. Clients read prices through the Pyth interface (`getPriceUnsafe`, `getPriceNoOlderThan`, `parsePriceFeedUpdates`, ...). Shared SEDA verification logic lives in `contracts/base/BaseSedaAdapter.sol` so future adapters (e.g. a Chainlink-style adapter) can reuse it.
 
 Both contracts are UUPS-upgradeable and use ERC-7201 namespaced storage.
 
@@ -36,10 +36,10 @@ bun test
 
 ## Deploy
 
-The repository ships a single deployment script that deploys FastProver and FastAdapter (both as UUPS proxies) and registers the SEDA FAST testnet signer as a trusted key on the prover:
+The repository ships a single deployment script that deploys FastProver and SedaPythAdapter (both as UUPS proxies) and registers the SEDA FAST testnet signer as a trusted key on the prover:
 
 ```bash
-bunx hardhat run scripts/deploy-fast.ts --network baseSepolia
+bunx hardhat run scripts/deploy-seda-pyth.ts --network baseSepolia
 ```
 
 The script prints the two proxy addresses and the trusted key on completion.
@@ -48,7 +48,7 @@ The script prints the two proxy addresses and the trusted key on completion.
 
 Any account can push updates; the prover enforces that the signature comes from a trusted SEDA FAST signer, and the adapter enforces `consensus == true` and `exitCode == 0`.
 
-Each element of `updateData` is an ABI-encoded `FastAdapter.SignedPayload`:
+Each element of `updateData` is an ABI-encoded `BaseSedaAdapter.SignedPayload`:
 
 ```solidity
 struct SignedPayload {
@@ -57,7 +57,7 @@ struct SignedPayload {
 }
 ```
 
-The oracle program's tally output (`result.result`) must ABI-encode a non-empty `SedaPriceUpdate[]`:
+The oracle program's tally output (`result.result`) must ABI-encode a non-empty `SedaPythAdapter.SedaPriceUpdate[]`:
 
 ```solidity
 struct SedaPriceUpdate {
@@ -114,3 +114,24 @@ bun run clean           # hardhat clean + cache/coverage dirs
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+---
+
+contracts/
+├── SedaPythAdapter.sol
+├── base/
+│   ├── BaseUpgradeable.sol
+│   ├── BaseSedaAdapter.sol
+│   └── SedaAdapterStorage.sol
+├── prover/
+│   ├── FastProver.sol
+│   ├── FastProverStorage.sol
+│   └── SedaDataTypes.sol
+└── pyth/
+    ├── BasePythAdapter.sol
+    ├── PythAdapterStorage.sol
+    └── external/
+        ├── IPyth.sol
+        ├── IPythEvents.sol
+        ├── PythStructs.sol
+        └── PythErrors.sol

@@ -1,7 +1,6 @@
 {
   "name": "seda-pricefeed-adapter",
   "version": "0.0.0",
-  "main": "index.js",
   "scripts": {
     "check": "bun run lint && bun run format:sol",
     "clean": "bunx hardhat clean && rimraf cache coverage",
@@ -14,8 +13,8 @@
     "lint:ts": "bunx biome check .",
     "lint:ts:fix": "bunx biome check --write --unsafe .",
     "test": "bunx hardhat test",
-    "test:coverage": "COVERAGE=true hardhat coverage",
-    "test:gas": "REPORT_GAS=true hardhat test"
+    "test:coverage": "bunx hardhat coverage",
+    "test:gas": "REPORT_GAS=true bunx hardhat test"
   },
   "keywords": [],
   "author": "",

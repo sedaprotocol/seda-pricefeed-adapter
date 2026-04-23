@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {IPyth} from "../interfaces/pyth/IPyth.sol";
-import {PythStructs} from "../interfaces/pyth/PythStructs.sol";
-import {PythErrors} from "../interfaces/pyth/PythErrors.sol";
-import {PythAdapterStorage} from "../storage/PythAdapterStorage.sol";
+import {IPyth} from "./external/IPyth.sol";
+import {PythStructs} from "./external/PythStructs.sol";
+import {PythErrors} from "./external/PythErrors.sol";
+import {PythAdapterStorage} from "./PythAdapterStorage.sol";
 
 /// @title BasePythAdapter
 /// @author Open Oracle Association
@@ -12,10 +12,6 @@ import {PythAdapterStorage} from "../storage/PythAdapterStorage.sol";
 /// @dev Provides Pyth interface implementation and delegates to abstract hooks for oracle-specific verification
 abstract contract BasePythAdapter is IPyth {
     // ============ Custom Errors ============
-
-    /// @notice Thrown when _verifyAndDecode fails during processing the result
-    /// @param reason Human-readable description of the validation failure
-    error InvalidResult(string reason);
 
     /// @notice Thrown if TWAP function is not implemented.
     error TwapNotImplemented();
@@ -57,14 +53,11 @@ abstract contract BasePythAdapter is IPyth {
         return _getPrice(id, age, true);
     }
 
-    /// @notice Update price feeds with given update messages.
-    /// @dev This implementation does not require or charge any fees; calls are always free.
-    /// Prices will be updated if they are more recent than the current stored prices.
-    /// The call will succeed even if the update is not the most recent.
-    /// Reverts if the updateData is invalid.
-    /// Implementors of `_processSignedPayload` SHOULD use `_applyUpdate(...)` when `updateStorage=true`
-    /// to avoid reverting on stale data and match Pyth semantics.
-    /// @param updateData Array of price update data.
+    /// @notice Update price feeds with the given signed updates
+    /// @dev No fees are charged. Each stored feed only advances when the new publish time is
+    ///      strictly newer; stale updates are silently ignored. Reverts if any payload fails
+    ///      verification in `_processUpdateData`.
+    /// @param updateData Array of signed oracle payloads (one per blob).
     function updatePriceFeeds(bytes[] calldata updateData) public payable virtual override noMsgValue {
         for (uint256 i = 0; i < updateData.length; ++i) {
             _processSignedPayload(updateData[i]);
@@ -195,17 +188,17 @@ abstract contract BasePythAdapter is IPyth {
 
     // ============ Public Functions ============
 
-    /// @notice Retrieves all registered asset IDs
-    /// @return Array of all asset IDs that have been created
-    function getAssetIds() public view returns (bytes32[] memory) {
-        return PythAdapterStorage.layout().assetIds;
+    /// @notice Retrieves all registered feed IDs
+    /// @return Array of all feed IDs that have been created
+    function getFeedIds() public view returns (bytes32[] memory) {
+        return PythAdapterStorage.layout().feedIds;
     }
 
-    /// @notice Gets price information for a specific asset ID
-    /// @param assetId The asset ID to get the price information for
-    /// @return The price information for the asset ID
-    function getPriceInfo(bytes32 assetId) external view returns (PythAdapterStorage.PriceInfo memory) {
-        return PythAdapterStorage.layout().priceInfos[assetId];
+    /// @notice Gets price information for a specific feed ID
+    /// @param feedId The feed ID to get the price information for
+    /// @return The price information for the feed ID
+    function getPriceInfo(bytes32 feedId) external view returns (PythAdapterStorage.PriceInfo memory) {
+        return PythAdapterStorage.layout().priceInfos[feedId];
     }
 
     // ============ Internal Functions ============
@@ -293,7 +286,7 @@ abstract contract BasePythAdapter is IPyth {
     /// @param updateStorage Whether to update storage
     /// @param checkUniqueness Whether to check uniqueness
     /// @dev Irrelevant for our requested set or out of window — ignored.
-    /// @dev Uniqueness behavior:
+    ///      Uniqueness behavior:
     ///      - If uniqueness is ON, select the **earliest** matching update in the window;
     ///        if multiple have the same timestamp, keep the first encountered. Never revert.
     ///      - If uniqueness is OFF, prefer the **latest** matching update in the window.
@@ -319,32 +312,14 @@ abstract contract BasePythAdapter is IPyth {
         uint64 existingTime = hasCandidate ? uint64(priceFeeds[targetIndex].price.publishTime) : 0;
         uint64 newTime = uint64(priceInfo.publishTime);
 
-        if (checkUniqueness) {
-            // Choose the earliest-in-window; if equal timestamp, keep the first one seen.
-            bool shouldReplace = !hasCandidate || (newTime < existingTime);
-            if (shouldReplace) {
-                // Convert to Pyth PriceFeed using computed priceId
-                priceFeeds[targetIndex] = _convertToPriceFeed(priceId, priceInfo);
+        // Uniqueness ON: keep the earliest-in-window (first seen on ties).
+        // Uniqueness OFF: keep the latest-in-window.
+        // `_applyUpdate` itself only advances storage on strictly newer timestamps.
+        bool shouldReplace = !hasCandidate || (checkUniqueness ? newTime < existingTime : newTime > existingTime);
+        if (!shouldReplace) return;
 
-                if (updateStorage) {
-                    // Parsing path should NOT revert on non-fresh data; only advance storage.
-                    _applyUpdate(priceId, priceInfo);
-                }
-            }
-            // If newTime == existingTime, keep the first encountered (no-op).
-        } else {
-            // Non-unique mode prefers the latest-in-window.
-            bool shouldReplace = !hasCandidate || (newTime > existingTime);
-            if (shouldReplace) {
-                // Convert to Pyth PriceFeed using computed priceId
-                priceFeeds[targetIndex] = _convertToPriceFeed(priceId, priceInfo);
-
-                if (updateStorage) {
-                    // Advance storage only when newer; don't revert on equal/older.
-                    _applyUpdate(priceId, priceInfo);
-                }
-            }
-        }
+        priceFeeds[targetIndex] = _convertToPriceFeed(priceId, priceInfo);
+        if (updateStorage) _applyUpdate(priceId, priceInfo);
     }
 
     /// @notice Updates price information with time-based validation
@@ -357,9 +332,9 @@ abstract contract BasePythAdapter is IPyth {
         // Skip if the new price is older than the current price.
         if (!(newInfo.publishTime > current.publishTime)) return;
 
-        // If this is a new price feed, add to assetIds before updating
+        // If this is a new price feed, add to feedIds before updating
         if (current.publishTime == 0) {
-            s.assetIds.push(priceId);
+            s.feedIds.push(priceId);
         }
 
         // Update all fields individually (more gas efficient than struct assignment)
@@ -412,11 +387,9 @@ abstract contract BasePythAdapter is IPyth {
             });
     }
 
-    /// @notice Processes a signed payload with optional storage update
+    /// @notice Verifies a signed payload via the subclass hook and applies each decoded update to storage
+    /// @dev Storage only advances for strictly newer publish times (see `_applyUpdate`).
     /// @param signedPayload The signed payload to process
-    /// @dev This base implementation delegates to `_processUpdateData` and applies updates when `updateStorage=true`.
-    /// Implementations MUST ensure `_processUpdateData` verifies authenticity and returns GLOBAL price IDs.
-    /// Storage only advances for strictly newer publish times.
     function _processSignedPayload(bytes calldata signedPayload) private {
         (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos) = _processUpdateData(signedPayload);
         for (uint256 i = 0; i < ids.length; ++i) {

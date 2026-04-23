@@ -1,7 +1,7 @@
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import { ethers, upgrades } from "hardhat";
-import { createTrustedKey, createUntrustedKey } from "../helpers/proverHelpers";
+import { createTrustedKey, createUntrustedKey } from "../helpers";
 
 describe("FastProver", () => {
   async function deployFastProverFixture() {
@@ -22,7 +22,7 @@ describe("FastProver", () => {
     it("Should initialize with correct owner and version", async () => {
       const { fastProver, owner } = await loadFixture(deployFastProverFixture);
       expect(await fastProver.owner()).to.equal(owner.address);
-      expect(await fastProver.version()).to.equal(1);
+      expect(await fastProver.VERSION()).to.equal(1);
     });
 
     it("Should revert when initializing with zero owner address", async () => {

@@ -2,8 +2,8 @@
 pragma solidity ^0.8.28;
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {BaseUpgradeable} from "./base/BaseUpgradeable.sol";
-import {FastProverStorage} from "./storage/FastProverStorage.sol";
+import {BaseUpgradeable} from "../base/BaseUpgradeable.sol";
+import {FastProverStorage} from "./FastProverStorage.sol";
 
 /// @title FastProver
 /// @author Open Oracle Association
@@ -21,11 +21,11 @@ contract FastProver is BaseUpgradeable {
     error InvalidKeyAddress();
 
     /// @notice Thrown when attempting to add a duplicate trusted key
-    /// @param key The public key that already exists
+    /// @param key The signer address that is already trusted
     error DuplicateTrustedKey(address key);
 
     /// @notice Thrown when attempting to remove a non-existent trusted key
-    /// @param key The public key that doesn't exist
+    /// @param key The signer address that is not in the trusted set
     error TrustedKeyNotFound(address key);
 
     /// @notice Thrown when signature verification fails (signer not trusted)
@@ -39,13 +39,13 @@ contract FastProver is BaseUpgradeable {
 
     // ============ Events ============
 
-    /// @notice Emitted when a new trusted key is added
-    /// @param key The public key that was added
+    /// @notice Emitted when a new trusted signer is added
+    /// @param key The trusted signer address that was added
     /// @param addedBy The address that added the key
     event TrustedKeyAdded(address indexed key, address indexed addedBy);
 
-    /// @notice Emitted when a trusted key is removed
-    /// @param key The public key that was removed
+    /// @notice Emitted when a trusted signer is removed
+    /// @param key The trusted signer address that was removed
     /// @param removedBy The address that removed the key
     event TrustedKeyRemoved(address indexed key, address indexed removedBy);
 
@@ -59,8 +59,8 @@ contract FastProver is BaseUpgradeable {
 
     // ============ Trusted Key Management ============
 
-    /// @notice Adds a new trusted public key
-    /// @param key The public key to add as trusted
+    /// @notice Adds a new trusted signer address for FAST ECDSA attestations
+    /// @param key The signer address to trust
     function addTrustedKey(address key) external onlyOwner {
         if (key == address(0)) revert InvalidKeyAddress();
 
@@ -75,8 +75,8 @@ contract FastProver is BaseUpgradeable {
         emit TrustedKeyAdded(key, msg.sender);
     }
 
-    /// @notice Removes a trusted public key
-    /// @param key The public key to remove from trusted keys
+    /// @notice Removes a trusted signer address
+    /// @param key The signer address to remove from the trusted set
     function removeTrustedKey(address key) external onlyOwner {
         FastProverStorage.Layout storage s = FastProverStorage.layout();
         if (!s.trustedKeys[key]) {
@@ -103,25 +103,25 @@ contract FastProver is BaseUpgradeable {
         return FastProverStorage.layout().trustedKeysList.length;
     }
 
-    /// @notice Gets all trusted keys
-    /// @return An array of all trusted public keys
+    /// @notice Gets all trusted signer addresses
+    /// @return An array of all trusted signer addresses
     function getAllTrustedKeys() external view returns (address[] memory) {
         return FastProverStorage.layout().trustedKeysList;
     }
 
-    /// @notice Checks if a key is trusted
-    /// @param key The public key to check
-    /// @return True if the key is trusted, false otherwise
+    /// @notice Checks if a signer address is trusted
+    /// @param key The signer address to check
+    /// @return True if the address is trusted, false otherwise
     function isTrustedKey(address key) external view returns (bool) {
         return FastProverStorage.layout().trustedKeys[key];
     }
 
     // ============ Data Verification ============
 
-    /// @notice Verifies price data using ECDSA signatures from trusted FAST keys
-    /// @param dataHash The hash of the price data to verify
+    /// @notice Verifies that `dataHash` was signed by a trusted FAST signer (ECDSA)
+    /// @param dataHash The 32-byte message hash the signature was produced over
     /// @param signature The ECDSA signature to verify
-    /// @return attester The address of the attester that signed the price data
+    /// @return attester The recovered signer address (must be trusted)
     /// @dev Reverts with SignatureVerificationFailed if the signature is invalid or from an untrusted key
     function verifyData(
         bytes32 dataHash,
@@ -155,13 +155,5 @@ contract FastProver is BaseUpgradeable {
         }
 
         return signer;
-    }
-
-    // ============ Utility Functions ============
-
-    /// @notice Returns the version of the contract
-    /// @return The version number
-    function version() public pure returns (uint256) {
-        return VERSION;
     }
 }

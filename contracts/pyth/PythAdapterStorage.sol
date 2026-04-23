@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 /// @title PythAdapterStorage
 /// @author Open Oracle Association
 /// @notice Storage library for Pyth adapter using the ERC-7201 storage pattern.
-/// @dev Storage layout and structs for Pyth adapter, including price info mapping and asset IDs.
+/// @dev Storage layout and structs for the Pyth adapter: per-feed `PriceInfo` and the registered `feedIds` list.
 /// @custom:storage-location pythadapter.storage.v1
 library PythAdapterStorage {
     // ============ Constants ============
@@ -17,8 +17,8 @@ library PythAdapterStorage {
 
     // ============ Structs ============
 
-    /// @notice Stores price information for a single asset, including EMA and confidence values
-    /// @dev Used as the value type in the mapping from assetId to PriceInfo in PythAdapterStorage.
+    /// @notice Stores price information for a single feed, including EMA and confidence values
+    /// @dev Used as the value type in the mapping from feedId to PriceInfo in PythAdapterStorage.
     ///      This struct is packed into two storage slots for gas efficiency.
     struct PriceInfo {
         // slot 1
@@ -34,10 +34,10 @@ library PythAdapterStorage {
     /// @notice Storage layout for PythAdapterStorage (v1)
     /// @dev Do not change the order of fields. For new fields, create a new versioned layout.
     struct Layout {
-        /// @notice Mapping from assetId to stored price information
+        /// @notice Mapping from feedId to stored price information
         mapping(bytes32 => PriceInfo) priceInfos;
-        /// @notice Array of all registered asset IDs
-        bytes32[] assetIds;
+        /// @notice Array of all registered feed IDs
+        bytes32[] feedIds;
     }
 
     // ============ Functions ============

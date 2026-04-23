@@ -20,9 +20,9 @@ library SedaDataTypes {
         uint128 gasUsed;
         /// Block Height at which data request was finalized
         uint64 blockHeight;
-        /// The timestamp of the block the data result is included
+        /// Block timestamp when this result was included
         uint64 blockTimestamp;
-        /// True or false whether the reveal results are in consensus or not (≥ 66%)
+        /// Whether reveal-phase results reached consensus (≥ 66%)
         bool consensus;
         /// Exit code of Tally WASM binary execution
         uint8 exitCode;

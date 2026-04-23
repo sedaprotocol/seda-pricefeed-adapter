@@ -2,10 +2,10 @@
 pragma solidity ^0.8.28;
 
 import {BaseSedaAdapter} from "./base/BaseSedaAdapter.sol";
-import {BasePythAdapter} from "./base/BasePythAdapter.sol";
-import {SedaDataTypes} from "./libraries/SedaDataTypes.sol";
-import {PythStructs} from "./interfaces/pyth/PythStructs.sol";
-import {PythAdapterStorage} from "./storage/PythAdapterStorage.sol";
+import {BasePythAdapter} from "./pyth/BasePythAdapter.sol";
+import {SedaDataTypes} from "./prover/SedaDataTypes.sol";
+import {PythStructs} from "./pyth/external/PythStructs.sol";
+import {PythAdapterStorage} from "./pyth/PythAdapterStorage.sol";
 
 /// @title SedaPythAdapter
 /// @author Open Oracle Association
@@ -91,7 +91,7 @@ contract SedaPythAdapter is BaseSedaAdapter, BasePythAdapter {
         SedaDataTypes.Result memory result = _verifySedaResult(updateData);
 
         SedaPriceUpdate[] memory ups = abi.decode(result.result, (SedaPriceUpdate[]));
-        if (ups.length == 0) revert InvalidResult("No price updates found in batch");
+        if (ups.length == 0) revert InvalidResult("No price updates");
 
         ids = new bytes32[](ups.length);
         infos = new PythAdapterStorage.PriceInfo[](ups.length);

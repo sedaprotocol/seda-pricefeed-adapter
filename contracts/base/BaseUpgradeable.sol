@@ -38,8 +38,8 @@ abstract contract BaseUpgradeable is Initializable, OwnableUpgradeable, UUPSUpgr
 
     // ============ External Functions ============
 
-    /// @notice Pauses the contract, preventing new operations (owner only)
-    /// @dev This is an emergency function to stop all operations
+    /// @notice Pauses the contract (owner only)
+    /// @dev Emergency brake: only functions using `whenNotPaused` are blocked while paused.
     function pause() external onlyOwner {
         _pause();
     }
