@@ -123,10 +123,12 @@ contract FastProver is BaseUpgradeable {
     /// @param signature The ECDSA signature to verify
     /// @return attester The recovered signer address (must be trusted)
     /// @dev Reverts with SignatureVerificationFailed if the signature is invalid or from an untrusted key
-    function verifyData(
-        bytes32 dataHash,
-        bytes calldata signature
-    ) external view whenNotPaused returns (address attester) {
+    function verifyData(bytes32 dataHash, bytes calldata signature)
+        external
+        view
+        whenNotPaused
+        returns (address attester)
+    {
         return _verifySignature(dataHash, signature);
     }
 

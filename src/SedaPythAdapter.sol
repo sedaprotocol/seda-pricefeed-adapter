@@ -69,25 +69,27 @@ contract SedaPythAdapter is BaseSedaAdapter, BasePythAdapter {
         if (storeUpdatesIfFresh) {
             if (paused()) revert EnforcedPause();
         }
-        return
-            super.parsePriceFeedUpdatesWithConfig(
-                updateData,
-                priceIds,
-                minAllowedPublishTime,
-                maxAllowedPublishTime,
-                checkUniqueness,
-                checkUpdateDataIsMinimal,
-                storeUpdatesIfFresh
-            );
+        return super.parsePriceFeedUpdatesWithConfig(
+            updateData,
+            priceIds,
+            minAllowedPublishTime,
+            maxAllowedPublishTime,
+            checkUniqueness,
+            checkUpdateDataIsMinimal,
+            storeUpdatesIfFresh
+        );
     }
 
     /// @notice Verifies + decodes a signed payload and returns feedIds with their decoded prices
     /// @param updateData The update data (SignedPayload with ABI-encoded Result + SEDA FAST signature)
     /// @return ids feedIds computed as `keccak256(abi.encode(drId, symbolId))`
     /// @return infos Decoded price infos from the oracle output
-    function _processUpdateData(
-        bytes calldata updateData
-    ) internal view override returns (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos) {
+    function _processUpdateData(bytes calldata updateData)
+        internal
+        view
+        override
+        returns (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos)
+    {
         SedaDataTypes.Result memory result = _verifySedaResult(updateData);
 
         SedaPriceUpdate[] memory ups = abi.decode(result.result, (SedaPriceUpdate[]));

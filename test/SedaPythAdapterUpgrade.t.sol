@@ -13,8 +13,7 @@ contract SedaPythAdapterUpgradeTest is Test {
     function test_upgradePreservesStateAndExposesV2Surface() external {
         address implementationV1 = address(new SedaPythAdapter());
         address proxy = UnsafeUpgrades.deployUUPSProxy(
-            implementationV1,
-            abi.encodeCall(SedaPythAdapter.initialize, (PROVER, OWNER))
+            implementationV1, abi.encodeCall(SedaPythAdapter.initialize, (PROVER, OWNER))
         );
 
         SedaPythAdapter adapterV1 = SedaPythAdapter(proxy);
@@ -23,10 +22,7 @@ contract SedaPythAdapterUpgradeTest is Test {
 
         address implementationV2 = address(new SedaPythAdapterV2Mock());
         UnsafeUpgrades.upgradeProxy(
-            proxy,
-            implementationV2,
-            abi.encodeCall(SedaPythAdapterV2Mock.initializeV2, ()),
-            OWNER
+            proxy, implementationV2, abi.encodeCall(SedaPythAdapterV2Mock.initializeV2, ()), OWNER
         );
 
         SedaPythAdapterV2Mock adapterV2 = SedaPythAdapterV2Mock(proxy);

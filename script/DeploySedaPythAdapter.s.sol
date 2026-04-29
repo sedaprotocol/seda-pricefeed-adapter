@@ -13,8 +13,7 @@ contract DeploySedaPythAdapterScript is Script {
         vm.startBroadcast();
 
         proxy = Upgrades.deployUUPSProxy(
-            "SedaPythAdapter.sol:SedaPythAdapter",
-            abi.encodeCall(SedaPythAdapter.initialize, (prover, owner))
+            "SedaPythAdapter.sol:SedaPythAdapter", abi.encodeCall(SedaPythAdapter.initialize, (prover, owner))
         );
 
         vm.stopBroadcast();

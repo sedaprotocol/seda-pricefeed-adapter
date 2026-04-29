@@ -19,11 +19,6 @@ interface IPythEvents {
     /// @param twapConf Confidence interval of the TWAP.
     /// @param downSlotsRatio Down slot ratio of the TWAP.
     event TwapPriceFeedUpdate(
-        bytes32 indexed id,
-        uint64 startTime,
-        uint64 endTime,
-        int64 twapPrice,
-        uint64 twapConf,
-        uint32 downSlotsRatio
+        bytes32 indexed id, uint64 startTime, uint64 endTime, int64 twapPrice, uint64 twapConf, uint32 downSlotsRatio
     );
 }
