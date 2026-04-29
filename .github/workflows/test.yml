@@ -1,40 +1,57 @@
-name: CI
+name: "⚡ Push"
 
 on:
-  push:
-  pull_request:
   workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
 
 env:
   FOUNDRY_PROFILE: ci
 
 jobs:
-  check:
-    name: Foundry project
+  checks:
+    name: "🔍 Checks"
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - name: "Check out the repo 📥"
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install Foundry
+      - name: "Install Foundry"
         uses: foundry-rs/foundry-toolchain@v1
 
-      - name: Show Forge version
-        run: |
-          forge --version
+      - name: "Show Forge version"
+        run: forge --version
 
-      - name: Run Forge fmt
-        run: |
-          forge fmt --check
-        id: fmt
+      - name: "Check formatting 🧹"
+        run: forge fmt --check
 
-      - name: Run Forge build
-        run: |
-          forge build --sizes
-        id: build
+      - name: "Compile the contracts 🛠️"
+        run: forge build --sizes
 
-      - name: Run Forge tests
-        run: |
-          forge test -vvv
-        id: test
+      - name: "Run tests 🧪"
+        run: forge test -vvv
+
+      - name: "Run tests with coverage 🧪"
+        run: forge coverage --report summary --report lcov > coverage-report.txt
+
+      - name: "Upload LCOV artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcov
+          path: lcov.info
+
+      - name: "Add Coverage PR Comment 💬"
+        if: github.event_name == 'pull_request'
+        uses: zgosalvez/github-actions-report-lcov@v5
+        with:
+          coverage-files: lcov.info
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          artifact-name: code-coverage-html-report
+          title-prefix: "Foundry "
