@@ -40,20 +40,19 @@ library SedaDataTypes {
     /// @param result The Result struct to derive the ID from
     /// @return The derived result ID
     function deriveResultId(Result memory result) internal pure returns (bytes32) {
-        return
-            keccak256(
-                bytes.concat(
-                    keccak256(bytes(SedaDataTypes.VERSION)),
-                    result.drId,
-                    result.consensus ? bytes1(0x01) : bytes1(0x00),
-                    bytes1(result.exitCode),
-                    keccak256(result.result),
-                    bytes8(result.blockHeight),
-                    bytes8(result.blockTimestamp),
-                    bytes16(result.gasUsed),
-                    keccak256(result.paybackAddress),
-                    keccak256(result.sedaPayload)
-                )
-            );
+        return keccak256(
+            bytes.concat(
+                keccak256(bytes(SedaDataTypes.VERSION)),
+                result.drId,
+                result.consensus ? bytes1(0x01) : bytes1(0x00),
+                bytes1(result.exitCode),
+                keccak256(result.result),
+                bytes8(result.blockHeight),
+                bytes8(result.blockTimestamp),
+                bytes16(result.gasUsed),
+                keccak256(result.paybackAddress),
+                keccak256(result.sedaPayload)
+            )
+        );
     }
 }

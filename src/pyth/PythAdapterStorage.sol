@@ -22,14 +22,20 @@ library PythAdapterStorage {
     ///      This struct is packed into two storage slots for gas efficiency.
     struct PriceInfo {
         // slot 1
-        uint64 publishTime; /// @notice The timestamp (seconds) when the price was published
-        int32 expo; /// @notice The exponent (decimals) for the price value
-        int64 price; /// @notice The latest reported price (scaled by expo)
-        uint64 conf; /// @notice Confidence interval for the price (same scale as price)
+        uint64 publishTime;
+        /// @notice The timestamp (seconds) when the price was published
+        int32 expo;
+        /// @notice The exponent (decimals) for the price value
+        int64 price;
+        /// @notice The latest reported price (scaled by expo)
+        uint64 conf;
+        /// @notice Confidence interval for the price (same scale as price)
         // slot 2
-        int64 emaPrice; /// @notice Exponential moving average price (scaled by expo)
-        uint64 emaConf; /// @notice Confidence interval for the EMA price (same scale as price)
+        int64 emaPrice;
+        /// @notice Exponential moving average price (scaled by expo)
+        uint64 emaConf;
     }
+    /// @notice Confidence interval for the EMA price (same scale as price)
 
     /// @notice Storage layout for PythAdapterStorage (v1)
     /// @dev Do not change the order of fields. For new fields, create a new versioned layout.

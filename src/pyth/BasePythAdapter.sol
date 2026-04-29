@@ -33,10 +33,12 @@ abstract contract BasePythAdapter is IPyth {
     }
 
     /// @inheritdoc IPyth
-    function getPriceNoOlderThan(
-        bytes32 id,
-        uint256 age
-    ) external view override returns (PythStructs.Price memory price) {
+    function getPriceNoOlderThan(bytes32 id, uint256 age)
+        external
+        view
+        override
+        returns (PythStructs.Price memory price)
+    {
         return _getPrice(id, age, false);
     }
 
@@ -46,10 +48,12 @@ abstract contract BasePythAdapter is IPyth {
     }
 
     /// @inheritdoc IPyth
-    function getEmaPriceNoOlderThan(
-        bytes32 id,
-        uint256 age
-    ) external view override returns (PythStructs.Price memory price) {
+    function getEmaPriceNoOlderThan(bytes32 id, uint256 age)
+        external
+        view
+        override
+        returns (PythStructs.Price memory price)
+    {
         return _getPrice(id, age, true);
     }
 
@@ -95,14 +99,14 @@ abstract contract BasePythAdapter is IPyth {
     /// @notice Get update fee
     /// @return The update fee (always 0 for this implementation)
     // solhint-disable-next-line use-natspec
-    function getUpdateFee(bytes[] calldata /* updateData */) external pure override returns (uint256) {
+    function getUpdateFee(bytes[] calldata /* updateData */ ) external pure override returns (uint256) {
         return 0;
     }
 
     /// @notice Get TWAP update fee
     /// @return The update fee (function reverts - TWAP is not implemented)
     // solhint-disable-next-line use-natspec
-    function getTwapUpdateFee(bytes[] calldata /* updateData */) external pure override returns (uint256) {
+    function getTwapUpdateFee(bytes[] calldata /* updateData */ ) external pure override returns (uint256) {
         revert TwapNotImplemented();
     }
 
@@ -164,10 +168,13 @@ abstract contract BasePythAdapter is IPyth {
     /// @notice Parse time-weighted average price (TWAP) from two consecutive price updates
     /// @return Array of TWAP price feeds (function reverts - not implemented)
     // solhint-disable-next-line use-natspec
-    function parseTwapPriceFeedUpdates(
-        bytes[] calldata /* updateData */,
-        bytes32[] calldata /* priceIds */
-    ) external payable override noMsgValue returns (PythStructs.TwapPriceFeed[] memory) {
+    function parseTwapPriceFeedUpdates(bytes[] calldata, /* updateData */ bytes32[] calldata /* priceIds */ )
+        external
+        payable
+        override
+        noMsgValue
+        returns (PythStructs.TwapPriceFeed[] memory)
+    {
         revert TwapNotImplemented();
     }
 
@@ -255,13 +262,7 @@ abstract contract BasePythAdapter is IPyth {
 
         for (uint256 i = 0; i < updateData.length; ++i) {
             totalUpdatesAcrossBlobs += _processFilteredUpdates(
-                updateData[i],
-                priceIds,
-                minPublishTime,
-                maxPublishTime,
-                checkUniqueness,
-                updateStorage,
-                priceFeeds
+                updateData[i], priceIds, minPublishTime, maxPublishTime, checkUniqueness, updateStorage, priceFeeds
             );
         }
 
@@ -365,26 +366,26 @@ abstract contract BasePythAdapter is IPyth {
     /// @param priceId The computed price ID
     /// @param priceInfo The price information
     /// @return priceFeed The converted price feed
-    function _convertToPriceFeed(
-        bytes32 priceId,
-        PythAdapterStorage.PriceInfo memory priceInfo
-    ) private pure returns (PythStructs.PriceFeed memory priceFeed) {
-        return
-            PythStructs.PriceFeed({
-                id: priceId,
-                price: PythStructs.Price({
-                    price: priceInfo.price,
-                    conf: priceInfo.conf,
-                    expo: priceInfo.expo,
-                    publishTime: priceInfo.publishTime
-                }),
-                emaPrice: PythStructs.Price({
-                    price: priceInfo.emaPrice,
-                    conf: priceInfo.emaConf,
-                    expo: priceInfo.expo,
-                    publishTime: priceInfo.publishTime
-                })
-            });
+    function _convertToPriceFeed(bytes32 priceId, PythAdapterStorage.PriceInfo memory priceInfo)
+        private
+        pure
+        returns (PythStructs.PriceFeed memory priceFeed)
+    {
+        return PythStructs.PriceFeed({
+            id: priceId,
+            price: PythStructs.Price({
+                price: priceInfo.price,
+                conf: priceInfo.conf,
+                expo: priceInfo.expo,
+                publishTime: priceInfo.publishTime
+            }),
+            emaPrice: PythStructs.Price({
+                price: priceInfo.emaPrice,
+                conf: priceInfo.emaConf,
+                expo: priceInfo.expo,
+                publishTime: priceInfo.publishTime
+            })
+        });
     }
 
     /// @notice Verifies a signed payload via the subclass hook and applies each decoded update to storage
@@ -422,14 +423,7 @@ abstract contract BasePythAdapter is IPyth {
 
         for (uint256 i = 0; i < ids.length; ++i) {
             _processPriceUpdate(
-                ids[i],
-                infos[i],
-                priceIds,
-                minPublishTime,
-                maxPublishTime,
-                priceFeeds,
-                updateStorage,
-                checkUniqueness
+                ids[i], infos[i], priceIds, minPublishTime, maxPublishTime, priceFeeds, updateStorage, checkUniqueness
             );
         }
 
@@ -446,7 +440,9 @@ abstract contract BasePythAdapter is IPyth {
     /// @dev MUST verify authenticity (e.g., signatures/merkle proofs) and MUST map oracle-native IDs
     ///      to GLOBAL IDs appropriate for this adapter (e.g., keccak(drId, symbolId) for SEDA).
     /// @dev MUST return ALL decoded updates in the blob to support the strict minimality check (when enabled).
-    function _processUpdateData(
-        bytes calldata updateData
-    ) internal view virtual returns (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos);
+    function _processUpdateData(bytes calldata updateData)
+        internal
+        view
+        virtual
+        returns (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos);
 }

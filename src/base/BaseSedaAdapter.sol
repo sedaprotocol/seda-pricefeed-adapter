@@ -95,9 +95,11 @@ abstract contract BaseSedaAdapter is BaseUpgradeable {
     /// @param signedPayload Opaque blob containing `SignedPayload`
     /// @return result The verified SEDA result. Callers are expected to ABI-decode `result.result`
     ///                into the shape emitted by their oracle program.
-    function _verifySedaResult(
-        bytes calldata signedPayload
-    ) internal view returns (SedaDataTypes.Result memory result) {
+    function _verifySedaResult(bytes calldata signedPayload)
+        internal
+        view
+        returns (SedaDataTypes.Result memory result)
+    {
         SignedPayload memory payload = abi.decode(signedPayload, (SignedPayload));
         result = abi.decode(payload.data, (SedaDataTypes.Result));
         bytes32 resultId = SedaDataTypes.deriveResultId(result);
