@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { ethers } from "hardhat";
+import { encodeSignedPayloadFromFastDataResult } from "../test/sedaSignedPayload";
 import type { SedaPythAdapter } from "../typechain-types/contracts/SedaPythAdapter";
 
 const EXEC_PROGRAM_ID =
@@ -7,17 +8,6 @@ const EXEC_PROGRAM_ID =
 const SEDA_PYTH_ADAPTER_ADDRESS = "0xDc2c35fE5c350c4F8633002EA77e1eD97409d049";
 const USDC_PYTH_ID =
   "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a";
-
-const RESULT_ABI_TYPE =
-  "tuple(bytes32 drId,uint128 gasUsed,uint64 blockHeight,uint64 blockTimestamp,bool consensus,uint8 exitCode,string version,bytes result,bytes paybackAddress,bytes sedaPayload)";
-const SIGNED_PAYLOAD_ABI_TYPE = "tuple(bytes data, bytes signature)";
-
-/** Normalize ECDSA v from 0/1 to 27/28 for OpenZeppelin ECDSA.recover */
-function normalizeSignature(hexSig: string): string {
-  const sigBytes = ethers.getBytes(hexSig);
-  if (sigBytes[64] < 27) sigBytes[64] += 27;
-  return ethers.hexlify(sigBytes);
-}
 
 async function main() {
   const apiKey = process.env.SEDA_FAST_API_KEY;
@@ -44,33 +34,14 @@ async function main() {
 
   const apiData = await res.json();
   const dr = apiData.data.dataResult;
-  const rawSig = `0x${apiData.data.signature}`;
 
   console.log(`  drId: ${dr.drId}`);
   console.log(`  exitCode: ${dr.exitCode}`);
 
-  // 2. Build signed payload
-  const abiCoder = ethers.AbiCoder.defaultAbiCoder();
-
-  const result = {
-    drId: `0x${dr.drId}`,
-    gasUsed: BigInt(dr.gasUsed),
-    blockHeight: BigInt(dr.blockHeight),
-    blockTimestamp: BigInt(dr.blockTimestamp),
-    consensus: dr.consensus,
-    exitCode: dr.exitCode,
-    version: dr.version,
-    result: `0x${dr.result}`,
-    paybackAddress: dr.paybackAddress ? `0x${dr.paybackAddress}` : "0x",
-    sedaPayload: dr.sedaPayload ? `0x${dr.sedaPayload}` : "0x",
-  };
-
-  const encodedResult = abiCoder.encode([RESULT_ABI_TYPE], [result]);
-  const signature = normalizeSignature(rawSig);
-
-  const signedPayload = abiCoder.encode(
-    [SIGNED_PAYLOAD_ABI_TYPE],
-    [{ data: encodedResult, signature }],
+  // 2. Build signed payload (FastProver accepts raw FAST v byte; on-chain normalization)
+  const signedPayload = encodeSignedPayloadFromFastDataResult(
+    dr,
+    apiData.data.signature,
   );
 
   // 3. Submit to SedaPythAdapter
@@ -86,9 +57,11 @@ async function main() {
   console.log(`  gas: ${receipt?.gasUsed.toString()}`);
 
   // 4. Read the price (feedId = keccak256(abi.encode(drId, symbolId)))
+  const abiCoder = ethers.AbiCoder.defaultAbiCoder();
   const symbolId = `0x${USDC_PYTH_ID}`;
+  const drIdHex = dr.drId.startsWith("0x") ? dr.drId : `0x${dr.drId}`;
   const feedId = ethers.keccak256(
-    abiCoder.encode(["bytes32", "bytes32"], [result.drId, symbolId]),
+    abiCoder.encode(["bytes32", "bytes32"], [drIdHex, symbolId]),
   );
 
   const price = await adapter.getPriceUnsafe(feedId);

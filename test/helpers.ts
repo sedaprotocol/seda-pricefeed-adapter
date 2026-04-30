@@ -1,6 +1,8 @@
 import type { ContractTransactionResponse, Wallet } from "ethers";
 import { ethers } from "hardhat";
 
+import { RESULT_ABI_TYPE, SIGNED_PAYLOAD_ABI_TYPE } from "./sedaSignedPayload";
+
 // ============ Key helpers ============
 
 /** Deterministic trusted signer derived from a validator id. */
@@ -12,12 +14,6 @@ export function createTrustedKey(validatorId: string = "validator1"): Wallet {
 export function createUntrustedKey(): Wallet {
   return new ethers.Wallet(ethers.id("untrusted").slice(2, 66));
 }
-
-// ABI type for SedaDataTypes.Result
-const RESULT_ABI_TYPE =
-  "tuple(bytes32 drId,uint128 gasUsed,uint64 blockHeight,uint64 blockTimestamp,bool consensus,uint8 exitCode,string version,bytes result,bytes paybackAddress,bytes sedaPayload)";
-
-const SIGNED_PAYLOAD_ABI_TYPE = "tuple(bytes data, bytes signature)";
 
 // ABI type for SedaPriceUpdate[] — matches the oracle program's tally output
 const SEDA_PRICE_UPDATE_ARRAY_TYPE =

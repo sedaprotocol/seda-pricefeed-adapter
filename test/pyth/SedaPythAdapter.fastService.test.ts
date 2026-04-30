@@ -6,6 +6,7 @@ import { ethers, upgrades } from "hardhat";
 import type { FastProver } from "../../typechain-types/contracts/prover/FastProver";
 import type { SedaPythAdapter } from "../../typechain-types/contracts/SedaPythAdapter";
 import { computeFeedId, deriveResultId } from "../helpers";
+import { encodeSignedPayloadFromFastDataResult } from "../sedaSignedPayload";
 
 // Real production vector captured from the SEDA FAST service.
 // See ./fast-execution.json — { request, response } captured from the live service.
@@ -18,11 +19,6 @@ const FAST_RESPONSE = FAST_VECTOR.response;
 // Public key of the SEDA FAST signer (compressed secp256k1).
 const FAST_SIGNER_PUBKEY =
   "0x021eacf821d4d21ad61515fc1212ca75739730bf0abcf4925045e3ebde0f93a7e8";
-
-// ABI types (duplicated locally to keep this test self-contained).
-const RESULT_ABI_TYPE =
-  "tuple(bytes32 drId,uint128 gasUsed,uint64 blockHeight,uint64 blockTimestamp,bool consensus,uint8 exitCode,string version,bytes result,bytes paybackAddress,bytes sedaPayload)";
-const SIGNED_PAYLOAD_ABI_TYPE = "tuple(bytes data, bytes signature)";
 
 // SEDA FAST emits signatures with v ∈ {0, 1} (raw secp256k1 recovery id).
 // The contract's FastProver normalizes to Ethereum's v ∈ {27, 28} internally,
@@ -94,18 +90,10 @@ describe("SedaPythAdapter — real SEDA FAST production vector", () => {
 
     const drId = `0x${FAST_RESPONSE.data.dataResult.drId}`;
 
-    // Build the signed payload using the raw signature (v ∈ {0, 1}) exactly
-    // as emitted by the SEDA FAST service. FastProver normalizes v on-chain.
-    const result = buildSedaResult();
-    const signature = `0x${FAST_RESPONSE.data.signature}`;
-
-    const data = ethers.AbiCoder.defaultAbiCoder().encode(
-      [RESULT_ABI_TYPE],
-      [result],
-    );
-    const payload = ethers.AbiCoder.defaultAbiCoder().encode(
-      [SIGNED_PAYLOAD_ABI_TYPE],
-      [{ data, signature }],
+    // Raw FAST signature (v ∈ {0, 1}); FastProver normalizes v on-chain.
+    const payload = encodeSignedPayloadFromFastDataResult(
+      FAST_RESPONSE.data.dataResult,
+      FAST_RESPONSE.data.signature,
     );
 
     await sedaPythAdapter.updatePriceFeeds([payload]);
