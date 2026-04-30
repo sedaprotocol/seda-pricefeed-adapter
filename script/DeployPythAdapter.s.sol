@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Script} from "forge-std/Script.sol";
+import {Script, console2} from "forge-std/Script.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 import {SedaPythAdapter} from "../src/SedaPythAdapter.sol";
 
-contract DeploySedaPythAdapterScript is Script {
+contract DeployPythAdapterScript is Script {
     function run() external returns (address proxy) {
-        address prover = vm.envAddress("SEDA_PROVER");
+        address prover = vm.envAddress("PROVER_ADDRESS");
         address owner = vm.envAddress("OWNER");
 
         vm.startBroadcast();
@@ -17,5 +17,7 @@ contract DeploySedaPythAdapterScript is Script {
         );
 
         vm.stopBroadcast();
+
+        console2.log("SedaPythAdapter proxy:", proxy);
     }
 }
