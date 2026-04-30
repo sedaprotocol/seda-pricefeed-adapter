@@ -21,7 +21,7 @@ test:
 	forge test
 
 test-upgrade:
-	forge test --match-path test/*Upgrade.t.sol -vv
+	forge test --match-path "test/*Upgrade.t.sol" -vv
 
 test-upgrade-prover:
 	forge test --match-path test/FastProverUpgrade.t.sol -vv
