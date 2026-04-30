@@ -7,8 +7,9 @@ out/
 /broadcast/*/31337/
 /broadcast/**/dry-run/
 
-# Docs
-docs/
+# Docs (forge doc auto-generated output; hand-written docs/*.md are tracked)
+docs/src/
+docs/book/
 
 # Dotenv file
 .env
