@@ -7,8 +7,15 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
-  FOUNDRY_PROFILE: ci
+  # PRs run the lighter `pr` profile; pushes to main run the deep `ci` profile.
+  FOUNDRY_PROFILE: ${{ github.event_name == 'push' && 'ci' || 'pr' }}
+  # Fail the test step if a stored gas snapshot drifts.
+  FORGE_SNAPSHOT_CHECK: true
 
 jobs:
   checks:
@@ -19,39 +26,81 @@ jobs:
       pull-requests: write
     steps:
       - name: "Check out the repo 📥"
-        uses: actions/checkout@v4
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: "Install Foundry"
-        uses: foundry-rs/foundry-toolchain@v1
+        uses: foundry-rs/foundry-toolchain@50d5a8956f2e319df19e6b57539d7e2acb9f8c1e # v1.5.0
+        with:
+          version: stable
+
+      # The OpenZeppelin Foundry Upgrades plugin shells out to
+      # `npx @openzeppelin/upgrades-core` over FFI to validate UUPS implementations
+      # (initializer + ERC-7201 namespaced storage layout). Node must be on PATH
+      # for `Upgrades.deployUUPSProxy` / `Upgrades.upgradeProxy` calls in tests
+      # and scripts to succeed. SHA-pinned for reproducibility.
+      - name: "Install Node (for OZ Upgrades validator)"
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: lts/*
 
       - name: "Show Forge version"
-        run: forge --version
+        run: |
+          echo "Foundry profile: $FOUNDRY_PROFILE"
+          forge --version
+          node --version
+          npx --version
 
       - name: "Check formatting 🧹"
         run: forge fmt --check
 
       - name: "Compile the contracts 🛠️"
-        run: forge build --sizes
+        run: forge build
 
+      - name: "Check contract sizes (src only) 📏"
+        run: forge build --sizes src/*
+
+      # `forge clean && forge build` guarantees a single, full build_info artifact
+      # for the OZ Upgrades validator. Incremental builds emit partial build_infos
+      # the validator rejects with "is not from a full compilation".
       - name: "Run tests 🧪"
-        run: forge test -vvv
+        run: forge clean && forge build && forge test --isolate -vvv
 
-      - name: "Run tests with coverage 🧪"
-        run: forge coverage --report summary --report lcov > coverage-report.txt
+      - name: "Run coverage 🧪"
+        env:
+          # Coverage doesn't need deep fuzzing; use default profile for speed.
+          FOUNDRY_PROFILE: default
+        run: forge coverage --report summary --report lcov
+
+      - name: "Filter coverage to src/ only 🎯"
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lcov
+          lcov --remove lcov.info \
+            'test/*' \
+            'script/*' \
+            'lib/*' \
+            -o lcov.src.info \
+            --ignore-errors unused
 
       - name: "Upload LCOV artifact"
         uses: actions/upload-artifact@v4
         with:
           name: lcov
-          path: lcov.info
+          path: |
+            lcov.info
+            lcov.src.info
 
-      - name: "Add Coverage PR Comment 💬"
+      - name: "Add coverage PR comment + enforce threshold 💬"
         if: github.event_name == 'pull_request'
         uses: zgosalvez/github-actions-report-lcov@v5
         with:
-          coverage-files: lcov.info
+          coverage-files: lcov.src.info
+          # Floor reflects current src/ line coverage (~15%). Ratchet upward
+          # as production code gains real tests; do not lower it.
+          minimum-coverage: 10
           github-token: ${{ secrets.GITHUB_TOKEN }}
           artifact-name: code-coverage-html-report
           title-prefix: "Foundry "
