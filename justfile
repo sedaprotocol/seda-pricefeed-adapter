@@ -34,9 +34,10 @@ build:
 clean:
     forge clean
 
-# Clean compile. Tests and deploy/upgrade scripts that call `Upgrades.*` need a
-# full build_info; incremental compiles produce partial artifacts the validator
-# rejects ("is not from a full compilation").
+# `forge clean && forge build`. The OZ upgrades-core validator (used by every
+# recipe that calls `Upgrades.*`: test, deploy-*, upgrade-*) needs a single
+# full build_info; `forge build`'s incremental output is partial.
+# Clean compile so the OZ upgrades-core validator gets a full build_info.
 [group('build')]
 rebuild:
     forge clean
@@ -44,24 +45,24 @@ rebuild:
 
 # --- Tests -----------------------------------------------------------------
 
-# Runs `rebuild` first, then `forge test`. Extra CLI args go to forge (e.g.
-# `just test --isolate -vvv`, `just test --match-contract Foo`).
-# Requires `node`/`npx` on PATH when upgrade tests run (OZ validator FFI).
+# Extra CLI args go straight to forge:
+#   just test --isolate -vvv
+#   just test --match-contract FastProver
+#   just test --match-path test/FastProverUpgrade.t.sol
+# Shebang + "$@" preserves quoting so globs in flags (e.g.
+# `--match-path 'test/*Upgrade.t.sol'`) are not expanded by the shell.
+# Requires `node`/`npx` on PATH (OZ validator FFI used by upgrade tests).
+# Run the full Foundry test suite (extra args forwarded to `forge test`).
 [group('test')]
 test *args: rebuild
-    forge test {{ args }}
+    #!/usr/bin/env bash
+    set -euo pipefail
+    exec forge test "$@"
 
+# Convenience: only the upgrade tests (slowest path; iterate on them in isolation).
 [group('test')]
 test-upgrade:
     just test --match-path "test/*Upgrade.t.sol" -vv
-
-[group('test')]
-test-upgrade-prover:
-    just test --match-path test/FastProverUpgrade.t.sol -vv
-
-[group('test')]
-test-upgrade-pyth-adapter:
-    just test --match-path test/SedaPythAdapterUpgrade.t.sol -vv
 
 [group('test')]
 coverage:
@@ -117,6 +118,7 @@ upgrade-pyth-adapter proxy_address: rebuild
 # Mirrors `.github/workflows/test.yml` step order. GitHub uses profile `pr` on PRs
 # and `ci` on pushes to main — locally we always use `pr` (lighter fuzz). GitHub-only:
 # lcov filter + coverage PR comment + artifact upload. Needs `node`/`npx` on PATH.
+# Run the same checks as the GitHub PR pipeline locally.
 [group('ci')]
 ci:
     #!/usr/bin/env bash
