@@ -68,36 +68,29 @@ jobs:
       - name: "Run tests 🧪"
         run: forge clean && forge build && forge test --isolate -vvv
 
+      # `--no-match-coverage` keeps the report focused on production code: deploy/
+      # upgrade scripts and the V2 mocks under `script/mocks/` are broadcast/test
+      # fixtures, not contract logic, and would otherwise skew the totals (0% rows
+      # for scripts, 100% for mocks). Filtering at the forge layer means both the
+      # summary and lcov.info are pre-filtered, so no downstream `lcov --remove` is
+      # needed. Keep the regex in sync with `justfile`'s `coverage` recipe.
       - name: "Run coverage 🧪"
         env:
           # Coverage doesn't need deep fuzzing; use default profile for speed.
           FOUNDRY_PROFILE: default
-        run: forge coverage --report summary --report lcov
-
-      - name: "Filter coverage to src/ only 🎯"
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq lcov
-          lcov --remove lcov.info \
-            'test/*' \
-            'script/*' \
-            'lib/*' \
-            -o lcov.src.info \
-            --ignore-errors unused
+        run: forge coverage --report summary --report lcov --no-match-coverage '(script|test|lib)/'
 
       - name: "Upload LCOV artifact"
         uses: actions/upload-artifact@v4
         with:
           name: lcov
-          path: |
-            lcov.info
-            lcov.src.info
+          path: lcov.info
 
       - name: "Add coverage PR comment + enforce threshold 💬"
         if: github.event_name == 'pull_request'
         uses: zgosalvez/github-actions-report-lcov@v5
         with:
-          coverage-files: lcov.src.info
+          coverage-files: lcov.info
           # Floor reflects current src/ line coverage (~15%). Ratchet upward
           # as production code gains real tests; do not lower it.
           minimum-coverage: 10

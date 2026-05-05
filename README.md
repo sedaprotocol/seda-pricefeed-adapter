@@ -53,11 +53,12 @@ just ci
 
 This follows `.github/workflows/test.yml`: `forge fmt --check`, `forge build`, contract
 sizes (`forge build --sizes src/*`), then `just test --isolate -vvv` (same clean rebuild +
-tests as CI, including the OZ validator), then `forge coverage --report summary --report lcov`
-with the default Foundry profile. It also prints tool versions and exits early if `node` /
-`npx` are missing. GitHub additionally filters `lcov` for `src/` and posts coverage on PRs —
-not replicated locally. Local `just ci` always uses the `pr` profile; pushes to `main` on
-GitHub use the heavier `ci` profile for fuzz/invariants.
+tests as CI, including the OZ validator), then `forge coverage` (summary + lcov, default
+profile, scoped to `src/` via `--no-match-coverage '(script\|test\|lib)/'` so deploy/upgrade
+scripts and the V2 mocks under `script/mocks/` don't skew the totals). It also prints tool
+versions and exits early if `node` / `npx` are missing. GitHub additionally posts the
+coverage summary on PRs — not replicated locally. Local `just ci` always uses the `pr`
+profile; pushes to `main` on GitHub use the heavier `ci` profile for fuzz/invariants.
 
 Optional: `just coverage` runs summary + `lcov` without the rest of CI.
 

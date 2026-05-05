@@ -64,9 +64,12 @@ test *args: rebuild
 test-upgrade:
     just test --match-path "test/*Upgrade.t.sol" -vv
 
+# `--no-match-coverage` strips script/test/lib so the table and lcov.info reflect
+# production code only (mirrors the GitHub `lcov --remove` step). Keep the regex
+# in sync with `.github/workflows/test.yml`.
 [group('test')]
 coverage:
-    forge coverage --report summary --report lcov
+    forge coverage --report summary --report lcov --no-match-coverage '(script|test|lib)/'
 
 # --- Deploy ----------------------------------------------------------------
 
@@ -148,7 +151,7 @@ ci:
     just test --isolate -vvv
 
     echo "▶ Coverage (summary + lcov, matches CI)"
-    FOUNDRY_PROFILE=default forge coverage --report summary --report lcov
+    FOUNDRY_PROFILE=default forge coverage --report summary --report lcov --no-match-coverage '(script|test|lib)/'
 
     echo ""
     echo "✓ All CI checks passed locally"
