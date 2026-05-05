@@ -4,7 +4,7 @@ End-to-end smoke test for the local UUPS upgrade flow against anvil. Complements
 
 ## When to run this
 
-- After changing any of `script/Deploy*.s.sol`, `script/Upgrade*.s.sol`, the [`justfile`](../justfile), or the local mock implementations under [`test/mocks/`](../test/mocks/).
+- After changing any of `script/Deploy*.s.sol`, `script/Upgrade*.s.sol`, the [`justfile`](../justfile), or the local mock implementations under [`script/mocks/`](../script/mocks/).
 - Before tagging a release that touches the upgrade plumbing.
 - As a sanity check after pulling main if you're about to do a real (non-mock) upgrade.
 
@@ -12,6 +12,7 @@ End-to-end smoke test for the local UUPS upgrade flow against anvil. Complements
 
 - `anvil` running on `127.0.0.1:8545` (default port).
 - Foundry installed and on `PATH` (`forge`, `cast`).
+- [`just`](https://github.com/casey/just) on `PATH` (every step below uses `just <recipe>`).
 - `node` + `npx` on `PATH` (the OZ Upgrades plugin invokes
   `npx @openzeppelin/upgrades-core` over FFI to validate every upgrade).
 - Working directory: repo root.
@@ -166,12 +167,14 @@ If every box checks, the local upgrade plumbing is healthy.
 
 ## Notes for the future
 
-- Default `*_IMPLEMENTATION_ARTIFACT` values point at the test mocks (`FastProverV2Mock`, `SedaPythAdapterV2Mock`). When a real V2 ships in `src/`, override via env:
+- Default `*_IMPLEMENTATION_ARTIFACT` values point at the local mock implementations under [`script/mocks/`](../script/mocks/) (`FastProverV2Mock`, `SedaPythAdapterV2Mock`). When a real V2 ships in `src/`, override via env:
 
   ```sh
   PROVER_IMPLEMENTATION_ARTIFACT=FastProverV2.sol:FastProverV2 \
     just upgrade-prover $PROVER_PROXY
   ```
+
+- **Side-effect import required for any new V2.** `forge script`'s `vm.getCode` resolver only sees contracts transitively imported by the script file, even though `forge build` produces the artifact in `out/`. The current upgrade scripts add a `// solhint-disable-next-line no-unused-import` for `FastProverV2Mock` / `SedaPythAdapterV2Mock` so the mocks resolve. When you point `*_IMPLEMENTATION_ARTIFACT` at a real V2 (or a different mock), add the same import line to [`script/UpgradeFastProver.s.sol`](../script/UpgradeFastProver.s.sol) / [`script/UpgradePythAdapter.s.sol`](../script/UpgradePythAdapter.s.sol). Without it the script reverts with `vm.getCode: no matching artifact found` after the OZ validator subprocess returns `SUCCESS` (the failure is in Foundry's resolver, not the validator).
 
 - The upgrade scripts encode `initializeV2()` (no-arg) when `CALL_INITIALIZE_V2=true`. If your real V2's reinitializer takes arguments, build the calldata yourself and pass it via `INITIALIZE_DATA` (hex):
 

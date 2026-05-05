@@ -4,6 +4,14 @@ pragma solidity ^0.8.28;
 import {Script} from "forge-std/Script.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
+// Side-effect import: pulls SedaPythAdapterV2Mock into the script's compilation
+// graph so `vm.getCode("SedaPythAdapterV2Mock.sol:SedaPythAdapterV2Mock")`
+// resolves when CALL_INITIALIZE_V2=true uses the default mock implementation.
+// forge script's vm.getCode resolver only sees contracts transitively reachable
+// from this file, even though `forge build` already produced the artifact in `out/`.
+// forge-lint: disable-next-line(unused-import)
+import {SedaPythAdapterV2Mock} from "./mocks/SedaPythAdapterV2Mock.sol";
+
 contract UpgradePythAdapterScript is Script {
     /// @notice Upgrade the SedaPythAdapter UUPS proxy at `PROXY_ADDRESS` to `IMPLEMENTATION_ARTIFACT`.
     /// @dev Init calldata, in priority order:
