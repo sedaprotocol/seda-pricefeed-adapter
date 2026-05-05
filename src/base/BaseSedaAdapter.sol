@@ -4,7 +4,6 @@ pragma solidity ^0.8.28;
 import {BaseUpgradeable} from "./BaseUpgradeable.sol";
 import {FastProver} from "../prover/FastProver.sol";
 import {SedaDataTypes} from "../prover/SedaDataTypes.sol";
-import {SedaAdapterStorage} from "./SedaAdapterStorage.sol";
 
 /// @title BaseSedaAdapter
 /// @author Open Oracle Association
@@ -26,6 +25,29 @@ abstract contract BaseSedaAdapter is BaseUpgradeable {
         bytes signature;
     }
 
+    // ============ ERC-7201 Namespaced Storage ============
+
+    /// @notice Storage layout shared by SEDA-aware adapters (v1).
+    /// @dev Holds the trusted FastProver address. Append-only; do not reorder fields.
+    /// @custom:storage-location erc7201:sedaadapter.storage.v1
+    struct SedaAdapterStorage {
+        address prover;
+    }
+
+    /// @dev `keccak256(abi.encode(uint256(keccak256("sedaadapter.storage.v1")) - 1)) & ~bytes32(uint256(0xff))`
+    bytes32 private constant SedaAdapterStorageLocation =
+        keccak256(abi.encode(uint256(keccak256("sedaadapter.storage.v1")) - 1)) & ~bytes32(uint256(0xff));
+
+    /// @notice Returns the namespaced storage struct.
+    /// @dev The slot is loaded via a stack variable because inline assembly cannot reference
+    ///      `constant` values that are computed via expressions (only direct number literals).
+    function _getSedaAdapterStorage() private pure returns (SedaAdapterStorage storage $) {
+        bytes32 slot = SedaAdapterStorageLocation;
+        assembly {
+            $.slot := slot
+        }
+    }
+
     // ============ Events ============
 
     /// @notice Emitted when the SEDA prover address is updated by the owner
@@ -44,14 +66,13 @@ abstract contract BaseSedaAdapter is BaseUpgradeable {
     /// @notice Initializes SEDA-adapter shared state
     /// @param prover Address of the FastProver contract used for result verification
     /// @param owner Address that will have administrative privileges over the adapter
-    // solhint-disable-next-line func-name-mixedcase
     function __BaseSedaAdapter_init(address prover, address owner) internal onlyInitializing {
         if (prover == address(0)) revert ZeroAddressNotAllowed("prover");
         if (owner == address(0)) revert ZeroAddressNotAllowed("owner");
 
         __BaseUpgradeable_init(owner);
 
-        SedaAdapterStorage.layout().prover = prover;
+        _getSedaAdapterStorage().prover = prover;
     }
 
     // ============ External Functions ============
@@ -60,9 +81,9 @@ abstract contract BaseSedaAdapter is BaseUpgradeable {
     /// @param newProver Address of the new SEDA prover contract
     function updateProver(address newProver) external onlyProxy onlyOwner {
         if (newProver == address(0)) revert ZeroAddressNotAllowed("prover");
-        SedaAdapterStorage.Layout storage s = SedaAdapterStorage.layout();
-        address oldProver = s.prover;
-        s.prover = newProver;
+        SedaAdapterStorage storage $ = _getSedaAdapterStorage();
+        address oldProver = $.prover;
+        $.prover = newProver;
         emit ProverUpdated(oldProver, newProver);
     }
 
@@ -70,7 +91,7 @@ abstract contract BaseSedaAdapter is BaseUpgradeable {
 
     /// @notice Returns the SEDA prover contract address
     function getProver() public view returns (address) {
-        return SedaAdapterStorage.layout().prover;
+        return _getSedaAdapterStorage().prover;
     }
 
     // ============ Internal Helpers ============

@@ -6,11 +6,20 @@ solc_version = "0.8.28"
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
+# Strip CBOR metadata for deterministic, verifiable bytecode.
+bytecode_hash = "none"
 ffi = true
 ast = true
 build_info = true
 extra_output = ["storageLayout"]
 fs_permissions = [{ access = "read", path = "out" }]
+# Suppress compiler warnings from third-party dependencies.
+ignored_warnings_from = ["lib"]
+
+[profile.pr]
+fuzz = { runs = 1_000 }
+invariant = { runs = 256, depth = 50 }
+verbosity = 3
 
 [profile.ci]
 fuzz = { runs = 10_000 }
@@ -21,4 +30,9 @@ verbosity = 4
 line_length = 120
 
 [lint]
-exclude_lints = ["mixed-case-function"]
+# `asm-keccak256`: silenced for now; the inline-assembly variant is opt-in
+# performance work, not a correctness concern. Drop this entry to revisit.
+# `screaming-snake-case-const`: silenced so ERC-7201 slot constants can use
+# PascalCase (e.g. `FastProverStorageLocation`), pairing them visually with
+# their struct (`FastProverStorage`) and matching OZ's canonical convention.
+exclude_lints = ["mixed-case-function", "asm-keccak256", "screaming-snake-case-const"]
