@@ -4,6 +4,14 @@ pragma solidity ^0.8.28;
 import {Script} from "forge-std/Script.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
+// Side-effect import: pulls FastProverV2Mock into the script's compilation graph
+// so `vm.getCode("FastProverV2Mock.sol:FastProverV2Mock")` resolves when
+// CALL_INITIALIZE_V2=true uses the default mock implementation. forge script's
+// vm.getCode resolver only sees contracts transitively reachable from this file,
+// even though `forge build` already produced the artifact in `out/`.
+// forge-lint: disable-next-line(unused-import)
+import {FastProverV2Mock} from "./mocks/FastProverV2Mock.sol";
+
 contract UpgradeFastProverScript is Script {
     /// @notice Upgrade the FastProver UUPS proxy at `PROXY_ADDRESS` to `IMPLEMENTATION_ARTIFACT`.
     /// @dev Init calldata, in priority order:
