@@ -28,15 +28,15 @@ Build and run tests:
 
 ```sh
 just build       # Optional; `just test` does its own clean + build first.
-just test        # Full suite (also runs the OZ Upgrades validator on *Upgrade.t.sol).
-just test-upgrade
+just test        # Full suite (runs the OZ Upgrades validator on *Upgrade.t.sol).
+just test-upgrade  # Only the upgrade tests (slowest path; iterate in isolation).
 ```
 
-Run upgrade smoke tests individually:
+Forge flags pass through `just test`, so single-file runs are one-liners:
 
 ```sh
-just test-upgrade-prover
-just test-upgrade-pyth-adapter
+just test --match-path test/FastProverUpgrade.t.sol -vvv
+just test --match-contract FastProver --isolate
 ```
 
 Why `just test` does a clean rebuild: the upgrade tests use `Upgrades.deployUUPSProxy` /
