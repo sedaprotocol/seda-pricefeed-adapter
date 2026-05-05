@@ -13,3 +13,6 @@ docs/book/
 
 # Dotenv file
 .env
+
+# Coverage
+lcov*.info
