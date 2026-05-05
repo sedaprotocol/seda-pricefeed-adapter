@@ -5,7 +5,6 @@ import {BaseSedaAdapter} from "./base/BaseSedaAdapter.sol";
 import {BasePythAdapter} from "./pyth/BasePythAdapter.sol";
 import {SedaDataTypes} from "./prover/SedaDataTypes.sol";
 import {PythStructs} from "./pyth/external/PythStructs.sol";
-import {PythAdapterStorage} from "./pyth/PythAdapterStorage.sol";
 
 /// @title SedaPythAdapter
 /// @author Open Oracle Association
@@ -28,7 +27,7 @@ contract SedaPythAdapter is BaseSedaAdapter, BasePythAdapter {
     ///      is `keccak256(abi.encode(drId, symbolId))`.
     struct SedaPriceUpdate {
         bytes32 symbolId;
-        PythAdapterStorage.PriceInfo priceInfo;
+        BasePythAdapter.PriceInfo priceInfo;
     }
 
     // ============ Initialization ============
@@ -88,7 +87,7 @@ contract SedaPythAdapter is BaseSedaAdapter, BasePythAdapter {
         internal
         view
         override
-        returns (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos)
+        returns (bytes32[] memory ids, BasePythAdapter.PriceInfo[] memory infos)
     {
         SedaDataTypes.Result memory result = _verifySedaResult(updateData);
 
@@ -96,7 +95,7 @@ contract SedaPythAdapter is BaseSedaAdapter, BasePythAdapter {
         if (ups.length == 0) revert InvalidResult("No price updates");
 
         ids = new bytes32[](ups.length);
-        infos = new PythAdapterStorage.PriceInfo[](ups.length);
+        infos = new BasePythAdapter.PriceInfo[](ups.length);
 
         for (uint256 i = 0; i < ups.length; ++i) {
             ids[i] = _computeFeedId(result.drId, ups[i].symbolId);

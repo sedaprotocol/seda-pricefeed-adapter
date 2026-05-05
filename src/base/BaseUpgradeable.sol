@@ -29,7 +29,6 @@ abstract contract BaseUpgradeable is Initializable, OwnableUpgradeable, UUPSUpgr
     /// @notice Initializes the base contract with owner
     /// @param owner Address that will have administrative privileges
     function __BaseUpgradeable_init(address owner) internal onlyInitializing {
-        // solhint-disable-previous-line func-name-mixedcase
         if (owner == address(0)) revert ZeroAddressNotAllowed("owner");
         __Ownable_init(owner);
         __Pausable_init();

@@ -3,7 +3,6 @@ pragma solidity ^0.8.28;
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {BaseUpgradeable} from "../base/BaseUpgradeable.sol";
-import {FastProverStorage} from "./FastProverStorage.sol";
 
 /// @title FastProver
 /// @author Open Oracle Association
@@ -11,7 +10,7 @@ import {FastProverStorage} from "./FastProverStorage.sol";
 /// @dev Manages a set of trusted signer addresses and exposes a view that recovers the signer
 ///      from a `(dataHash, signature)` pair and asserts it is currently trusted.
 /// @custom:security Administrative functions are onlyOwner. The contract is pausable for emergencies.
-/// @custom:upgrades UUPS upgrade pattern.
+/// @custom:upgrades UUPS upgrade pattern with ERC-7201 namespaced storage.
 contract FastProver is BaseUpgradeable {
     using ECDSA for bytes32;
 
@@ -32,10 +31,35 @@ contract FastProver is BaseUpgradeable {
     /// @param signer The address of the signer that failed verification
     error SignatureVerificationFailed(address signer);
 
-    // ============ State Variables ============
+    // ============ Constants ============
 
     /// @notice Version of the contract for upgrade tracking
     uint256 public constant VERSION = 1;
+
+    // ============ ERC-7201 Namespaced Storage ============
+
+    /// @notice Storage layout for FastProver (v1).
+    /// @dev Do not change the order of fields. For new fields, append at the end.
+    ///      Annotated per ERC-7201 so OpenZeppelin Upgrades validates layout across upgrades.
+    /// @custom:storage-location erc7201:fastprover.storage.v1
+    struct FastProverStorage {
+        mapping(address key => bool trusted) trustedKeys;
+        address[] trustedKeysList;
+    }
+
+    /// @dev `keccak256(abi.encode(uint256(keccak256("fastprover.storage.v1")) - 1)) & ~bytes32(uint256(0xff))`
+    bytes32 private constant FastProverStorageLocation =
+        keccak256(abi.encode(uint256(keccak256("fastprover.storage.v1")) - 1)) & ~bytes32(uint256(0xff));
+
+    /// @notice Returns the namespaced storage struct.
+    /// @dev The slot is loaded via a stack variable because inline assembly cannot reference
+    ///      `constant` values that are computed via expressions (only direct number literals).
+    function _getFastProverStorage() private pure returns (FastProverStorage storage $) {
+        bytes32 slot = FastProverStorageLocation;
+        assembly {
+            $.slot := slot
+        }
+    }
 
     // ============ Events ============
 
@@ -64,13 +88,13 @@ contract FastProver is BaseUpgradeable {
     function addTrustedKey(address key) external onlyOwner {
         if (key == address(0)) revert InvalidKeyAddress();
 
-        FastProverStorage.Layout storage s = FastProverStorage.layout();
-        if (s.trustedKeys[key]) {
+        FastProverStorage storage $ = _getFastProverStorage();
+        if ($.trustedKeys[key]) {
             revert DuplicateTrustedKey(key);
         }
 
-        s.trustedKeys[key] = true;
-        s.trustedKeysList.push(key);
+        $.trustedKeys[key] = true;
+        $.trustedKeysList.push(key);
 
         emit TrustedKeyAdded(key, msg.sender);
     }
@@ -78,18 +102,18 @@ contract FastProver is BaseUpgradeable {
     /// @notice Removes a trusted signer address
     /// @param key The signer address to remove from the trusted set
     function removeTrustedKey(address key) external onlyOwner {
-        FastProverStorage.Layout storage s = FastProverStorage.layout();
-        if (!s.trustedKeys[key]) {
+        FastProverStorage storage $ = _getFastProverStorage();
+        if (!$.trustedKeys[key]) {
             revert TrustedKeyNotFound(key);
         }
 
-        s.trustedKeys[key] = false;
+        $.trustedKeys[key] = false;
 
         // Remove from array by swapping with last element and popping
-        for (uint256 i = 0; i < s.trustedKeysList.length; ++i) {
-            if (s.trustedKeysList[i] == key) {
-                s.trustedKeysList[i] = s.trustedKeysList[s.trustedKeysList.length - 1];
-                s.trustedKeysList.pop();
+        for (uint256 i = 0; i < $.trustedKeysList.length; ++i) {
+            if ($.trustedKeysList[i] == key) {
+                $.trustedKeysList[i] = $.trustedKeysList[$.trustedKeysList.length - 1];
+                $.trustedKeysList.pop();
                 break;
             }
         }
@@ -100,20 +124,20 @@ contract FastProver is BaseUpgradeable {
     /// @notice Gets the total number of trusted keys
     /// @return The number of trusted keys
     function getTrustedKeysCount() external view returns (uint256) {
-        return FastProverStorage.layout().trustedKeysList.length;
+        return _getFastProverStorage().trustedKeysList.length;
     }
 
     /// @notice Gets all trusted signer addresses
     /// @return An array of all trusted signer addresses
     function getAllTrustedKeys() external view returns (address[] memory) {
-        return FastProverStorage.layout().trustedKeysList;
+        return _getFastProverStorage().trustedKeysList;
     }
 
     /// @notice Checks if a signer address is trusted
     /// @param key The signer address to check
     /// @return True if the address is trusted, false otherwise
     function isTrustedKey(address key) external view returns (bool) {
-        return FastProverStorage.layout().trustedKeys[key];
+        return _getFastProverStorage().trustedKeys[key];
     }
 
     // ============ Data Verification ============
@@ -152,7 +176,7 @@ contract FastProver is BaseUpgradeable {
 
         address signer = messageHash.recover(sig);
 
-        if (!FastProverStorage.layout().trustedKeys[signer]) {
+        if (!_getFastProverStorage().trustedKeys[signer]) {
             revert SignatureVerificationFailed(signer);
         }
 

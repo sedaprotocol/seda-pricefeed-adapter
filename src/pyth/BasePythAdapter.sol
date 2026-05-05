@@ -4,7 +4,6 @@ pragma solidity ^0.8.28;
 import {IPyth} from "./external/IPyth.sol";
 import {PythStructs} from "./external/PythStructs.sol";
 import {PythErrors} from "./external/PythErrors.sol";
-import {PythAdapterStorage} from "./PythAdapterStorage.sol";
 
 /// @title BasePythAdapter
 /// @author Open Oracle Association
@@ -15,6 +14,55 @@ abstract contract BasePythAdapter is IPyth {
 
     /// @notice Thrown if TWAP function is not implemented.
     error TwapNotImplemented();
+
+    // ============ Public Types ============
+
+    /// @notice Stores price information for a single feed, including EMA and confidence values.
+    /// @dev Used as the value type in the namespaced `priceInfos` mapping. This struct packs into
+    ///      two storage slots for gas efficiency.
+    struct PriceInfo {
+        // slot 1
+        /// @notice The timestamp (seconds) when the price was published
+        uint64 publishTime;
+        /// @notice The exponent (decimals) for the price value
+        int32 expo;
+        /// @notice The latest reported price (scaled by expo)
+        int64 price;
+        /// @notice Confidence interval for the price (same scale as price)
+        uint64 conf;
+        // slot 2
+        /// @notice Exponential moving average price (scaled by expo)
+        int64 emaPrice;
+        /// @notice Confidence interval for the EMA price (same scale as price)
+        uint64 emaConf;
+    }
+
+    // ============ ERC-7201 Namespaced Storage ============
+
+    /// @notice Storage layout for the Pyth-style adapter (v1).
+    /// @dev Append-only; do not reorder fields. Annotated per ERC-7201 so OpenZeppelin Upgrades
+    ///      validates layout across upgrades.
+    /// @custom:storage-location erc7201:pythadapter.storage.v1
+    struct PythAdapterStorage {
+        /// @notice Mapping from feedId to stored price information
+        mapping(bytes32 feedId => PriceInfo info) priceInfos;
+        /// @notice Array of all registered feed IDs
+        bytes32[] feedIds;
+    }
+
+    /// @dev `keccak256(abi.encode(uint256(keccak256("pythadapter.storage.v1")) - 1)) & ~bytes32(uint256(0xff))`
+    bytes32 private constant PythAdapterStorageLocation =
+        keccak256(abi.encode(uint256(keccak256("pythadapter.storage.v1")) - 1)) & ~bytes32(uint256(0xff));
+
+    /// @notice Returns the namespaced storage struct.
+    /// @dev The slot is loaded via a stack variable because inline assembly cannot reference
+    ///      `constant` values that are computed via expressions (only direct number literals).
+    function _getPythAdapterStorage() private pure returns (PythAdapterStorage storage $) {
+        bytes32 slot = PythAdapterStorageLocation;
+        assembly {
+            $.slot := slot
+        }
+    }
 
     // ============ Modifiers ============
 
@@ -81,7 +129,7 @@ abstract contract BasePythAdapter is IPyth {
 
         bool needsUpdate = false;
         for (uint256 i = 0; i < priceIds.length; ++i) {
-            PythAdapterStorage.PriceInfo memory current = PythAdapterStorage.layout().priceInfos[priceIds[i]];
+            PriceInfo memory current = _getPythAdapterStorage().priceInfos[priceIds[i]];
             if (current.publishTime < publishTimes[i]) {
                 needsUpdate = true;
                 break;
@@ -98,14 +146,12 @@ abstract contract BasePythAdapter is IPyth {
 
     /// @notice Get update fee
     /// @return The update fee (always 0 for this implementation)
-    // solhint-disable-next-line use-natspec
     function getUpdateFee(bytes[] calldata /* updateData */ ) external pure override returns (uint256) {
         return 0;
     }
 
     /// @notice Get TWAP update fee
     /// @return The update fee (function reverts - TWAP is not implemented)
-    // solhint-disable-next-line use-natspec
     function getTwapUpdateFee(bytes[] calldata /* updateData */ ) external pure override returns (uint256) {
         revert TwapNotImplemented();
     }
@@ -167,7 +213,6 @@ abstract contract BasePythAdapter is IPyth {
 
     /// @notice Parse time-weighted average price (TWAP) from two consecutive price updates
     /// @return Array of TWAP price feeds (function reverts - not implemented)
-    // solhint-disable-next-line use-natspec
     function parseTwapPriceFeedUpdates(bytes[] calldata, /* updateData */ bytes32[] calldata /* priceIds */ )
         external
         payable
@@ -198,14 +243,14 @@ abstract contract BasePythAdapter is IPyth {
     /// @notice Retrieves all registered feed IDs
     /// @return Array of all feed IDs that have been created
     function getFeedIds() public view returns (bytes32[] memory) {
-        return PythAdapterStorage.layout().feedIds;
+        return _getPythAdapterStorage().feedIds;
     }
 
     /// @notice Gets price information for a specific feed ID
     /// @param feedId The feed ID to get the price information for
     /// @return The price information for the feed ID
-    function getPriceInfo(bytes32 feedId) external view returns (PythAdapterStorage.PriceInfo memory) {
-        return PythAdapterStorage.layout().priceInfos[feedId];
+    function getPriceInfo(bytes32 feedId) external view returns (PriceInfo memory) {
+        return _getPythAdapterStorage().priceInfos[feedId];
     }
 
     // ============ Internal Functions ============
@@ -220,11 +265,10 @@ abstract contract BasePythAdapter is IPyth {
     /// @param useEma Whether to return EMA price (true) or regular price (false)
     /// @return price The requested price data
     function _getPrice(bytes32 id, uint256 age, bool useEma) internal view returns (PythStructs.Price memory price) {
-        PythAdapterStorage.PriceInfo memory info = PythAdapterStorage.layout().priceInfos[id];
+        PriceInfo memory info = _getPythAdapterStorage().priceInfos[id];
         if (info.publishTime == 0) revert PythErrors.PriceFeedNotFound();
 
         // Age validation (only if age > 0)
-        // solhint-disable-next-line not-rely-on-time
         if (age > 0 && (block.timestamp < info.publishTime || block.timestamp - info.publishTime > age)) {
             revert PythErrors.StalePrice();
         }
@@ -293,7 +337,7 @@ abstract contract BasePythAdapter is IPyth {
     ///      - If uniqueness is OFF, prefer the **latest** matching update in the window.
     function _processPriceUpdate(
         bytes32 priceId,
-        PythAdapterStorage.PriceInfo memory priceInfo,
+        PriceInfo memory priceInfo,
         bytes32[] memory priceIds,
         uint64 minPublishTime,
         uint64 maxPublishTime,
@@ -326,16 +370,16 @@ abstract contract BasePythAdapter is IPyth {
     /// @notice Updates price information with time-based validation
     /// @param priceId The unique identifier for the price feed
     /// @param newInfo The new price information to store
-    function _applyUpdate(bytes32 priceId, PythAdapterStorage.PriceInfo memory newInfo) internal {
-        PythAdapterStorage.Layout storage s = PythAdapterStorage.layout();
-        PythAdapterStorage.PriceInfo storage current = s.priceInfos[priceId];
+    function _applyUpdate(bytes32 priceId, PriceInfo memory newInfo) internal {
+        PythAdapterStorage storage $ = _getPythAdapterStorage();
+        PriceInfo storage current = $.priceInfos[priceId];
 
         // Skip if the new price is older than the current price.
         if (!(newInfo.publishTime > current.publishTime)) return;
 
         // If this is a new price feed, add to feedIds before updating
         if (current.publishTime == 0) {
-            s.feedIds.push(priceId);
+            $.feedIds.push(priceId);
         }
 
         // Update all fields individually (more gas efficient than struct assignment)
@@ -366,7 +410,7 @@ abstract contract BasePythAdapter is IPyth {
     /// @param priceId The computed price ID
     /// @param priceInfo The price information
     /// @return priceFeed The converted price feed
-    function _convertToPriceFeed(bytes32 priceId, PythAdapterStorage.PriceInfo memory priceInfo)
+    function _convertToPriceFeed(bytes32 priceId, PriceInfo memory priceInfo)
         private
         pure
         returns (PythStructs.PriceFeed memory priceFeed)
@@ -392,7 +436,7 @@ abstract contract BasePythAdapter is IPyth {
     /// @dev Storage only advances for strictly newer publish times (see `_applyUpdate`).
     /// @param signedPayload The signed payload to process
     function _processSignedPayload(bytes calldata signedPayload) private {
-        (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos) = _processUpdateData(signedPayload);
+        (bytes32[] memory ids, PriceInfo[] memory infos) = _processUpdateData(signedPayload);
         for (uint256 i = 0; i < ids.length; ++i) {
             _applyUpdate(ids[i], infos[i]);
         }
@@ -419,7 +463,7 @@ abstract contract BasePythAdapter is IPyth {
         bool updateStorage,
         PythStructs.PriceFeed[] memory priceFeeds
     ) private returns (uint64) {
-        (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos) = _processUpdateData(updateData);
+        (bytes32[] memory ids, PriceInfo[] memory infos) = _processUpdateData(updateData);
 
         for (uint256 i = 0; i < ids.length; ++i) {
             _processPriceUpdate(
@@ -444,5 +488,5 @@ abstract contract BasePythAdapter is IPyth {
         internal
         view
         virtual
-        returns (bytes32[] memory ids, PythAdapterStorage.PriceInfo[] memory infos);
+        returns (bytes32[] memory ids, PriceInfo[] memory infos);
 }
