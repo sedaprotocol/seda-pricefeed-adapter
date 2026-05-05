@@ -4,7 +4,7 @@ End-to-end smoke test for the local UUPS upgrade flow against anvil. Complements
 
 ## When to run this
 
-- After changing any of `script/Deploy*.s.sol`, `script/Upgrade*.s.sol`, the [`Makefile`](../Makefile), or the local mock implementations under [`test/mocks/`](../test/mocks/).
+- After changing any of `script/Deploy*.s.sol`, `script/Upgrade*.s.sol`, the [`justfile`](../justfile), or the local mock implementations under [`test/mocks/`](../test/mocks/).
 - Before tagging a release that touches the upgrade plumbing.
 - As a sanity check after pulling main if you're about to do a real (non-mock) upgrade.
 
@@ -12,6 +12,8 @@ End-to-end smoke test for the local UUPS upgrade flow against anvil. Complements
 
 - `anvil` running on `127.0.0.1:8545` (default port).
 - Foundry installed and on `PATH` (`forge`, `cast`).
+- `node` + `npx` on `PATH` (the OZ Upgrades plugin invokes
+  `npx @openzeppelin/upgrades-core` over FFI to validate every upgrade).
 - Working directory: repo root.
 
 In a separate terminal:
@@ -36,23 +38,28 @@ The two contract families are tested independently (`FastProver`, `SedaPythAdapt
 | `OWNER` | `0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266` | anvil account 0 |
 | `PRIVATE_KEY` | `0xac09…ff80` | anvil account 0 (well-known, local-only) |
 
-All commands below assume those defaults. Override via `make ... VAR=value`.
+All commands below assume those defaults. Override either by exporting in your
+shell (`export RPC_URL=...; just <recipe>`), prefixing per-call
+(`RPC_URL=... just <recipe>`), or copying [`.env.example`](../.env.example) to
+`.env` (auto-loaded by `just`).
 
 ## FastProver flow
 
-### 1. Build and run upgrade unit tests first
+### 1. Run the upgrade unit tests first
 
 ```sh
-forge build
-make test-upgrade
+just test-upgrade
 ```
 
-Expect both `test_upgradePreservesStateAndExposesV2Surface` cases to pass. If they don't, stop — fix that before exercising the live flow.
+This compiles from clean and runs both upgrade tests through the real OpenZeppelin
+Upgrades validator (initializer + ERC-7201 namespaced storage layout). Expect both
+`test_upgradePreservesStateAndExposesV2Surface` cases to pass. If they don't, stop —
+fix that before exercising the live flow.
 
 ### 2. Deploy a fresh prover
 
 ```sh
-make deploy-prover
+just deploy-prover
 ```
 
 Capture the printed `FastProver proxy: 0x...` line:
@@ -87,7 +94,7 @@ cast call $PROVER_PROXY "isTrustedKey(address)(bool)" \
 ### 5. Run the upgrade
 
 ```sh
-make upgrade-prover PROXY_ADDRESS=$PROVER_PROXY
+just upgrade-prover $PROVER_PROXY
 ```
 
 Expect `ONCHAIN EXECUTION COMPLETE & SUCCESSFUL.` at the bottom of the output.
@@ -122,7 +129,7 @@ Expect a revert with `InvalidInitialization`. Why: `reinitializer(2)` was alread
 Use `deploy-all` to provision both proxies in one shot, then upgrade only the adapter.
 
 ```sh
-make deploy-all
+just deploy-all
 ```
 
 Capture the `SedaPythAdapter proxy: 0x...` line:
@@ -133,7 +140,7 @@ export ADAPTER_PROXY=0x...
 cast call $ADAPTER_PROXY "getProver()(address)" --rpc-url http://127.0.0.1:8545
 cast call $ADAPTER_PROXY "owner()(address)"     --rpc-url http://127.0.0.1:8545
 
-make upgrade-pyth-adapter PROXY_ADDRESS=$ADAPTER_PROXY
+just upgrade-pyth-adapter $ADAPTER_PROXY
 
 cast call $ADAPTER_PROXY "version()(uint256)"   --rpc-url http://127.0.0.1:8545
 # expect: 2
@@ -149,24 +156,30 @@ cast send $ADAPTER_PROXY "initializeV2()" \
 ## Pass/fail checklist
 
 - [ ] `forge build` clean.
-- [ ] `make test-upgrade` green.
-- [ ] `make deploy-prover` succeeds and prints proxy address.
-- [ ] After `make upgrade-prover`: `version()` returns `2` and seeded trusted-key state is preserved.
+- [ ] `just test-upgrade` green.
+- [ ] `just deploy-prover` succeeds and prints proxy address.
+- [ ] After `just upgrade-prover`: `version()` returns `2` and seeded trusted-key state is preserved.
 - [ ] Re-calling `initializeV2()` reverts with `InvalidInitialization`.
-- [ ] Same passes for `make deploy-all` + `make upgrade-pyth-adapter` (`version()`, `getProver()` unchanged, double-init reverts).
+- [ ] Same passes for `just deploy-all` + `just upgrade-pyth-adapter` (`version()`, `getProver()` unchanged, double-init reverts).
 
 If every box checks, the local upgrade plumbing is healthy.
 
 ## Notes for the future
 
-- Default `*_IMPLEMENTATION_ARTIFACT` values point at the test mocks (`FastProverV2Mock`, `SedaPythAdapterV2Mock`). When a real V2 ships in `src/`, override per call:
+- Default `*_IMPLEMENTATION_ARTIFACT` values point at the test mocks (`FastProverV2Mock`, `SedaPythAdapterV2Mock`). When a real V2 ships in `src/`, override via env:
 
   ```sh
-  make upgrade-prover \
-    PROXY_ADDRESS=$PROVER_PROXY \
-    PROVER_IMPLEMENTATION_ARTIFACT=FastProverV2.sol:FastProverV2
+  PROVER_IMPLEMENTATION_ARTIFACT=FastProverV2.sol:FastProverV2 \
+    just upgrade-prover $PROVER_PROXY
   ```
 
-- Anvil has no persistence between restarts. Re-run `make deploy-*` whenever you bounce it.
+- The upgrade scripts encode `initializeV2()` (no-arg) when `CALL_INITIALIZE_V2=true`. If your real V2's reinitializer takes arguments, build the calldata yourself and pass it via `INITIALIZE_DATA` (hex):
+
+  ```sh
+  INITIALIZE_DATA=$(cast calldata "initializeV2(address,uint256)" 0x... 42) \
+    just upgrade-prover $PROVER_PROXY
+  ```
+
+- Anvil has no persistence between restarts. Re-run `just deploy-*` whenever you bounce it.
 - Mainnet/testnet runs use the same scripts but with `RPC_URL`, `OWNER`, and signer flags pointing elsewhere. Never reuse the local default `PRIVATE_KEY` outside anvil.
 - The Foundry tests in [`test/`](../test/) cover the upgrade logic in isolation (no on-chain broadcast). This document covers the broadcast pipeline. Both should pass — they catch different classes of regressions.
