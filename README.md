@@ -1,119 +1,51 @@
-# SEDA PriceFeedAdapter
+# seda-pricefeed-adapter
 
-A Pyth-compatible price feed adapter for the [SEDA Protocol](https://www.seda.xyz/) FAST oracle path. SEDA FAST signs oracle results with ECDSA, and this adapter verifies those signatures on-chain and exposes the resulting prices through the standard `IPyth` interface.
+Foundry-based SEDA price feed adapter project with OpenZeppelin UUPS upgrade flow.
 
-For architecture details, see [DESIGN.md](DESIGN.md).
+## Local workflow
 
-## Overview
+Start a local chain:
 
-The **SedaPythAdapter** (`contracts/SedaPythAdapter.sol`) accepts signed SEDA FAST oracle results, verifies them through the **FastProver** (`contracts/prover/FastProver.sol`), and writes per-feed prices into namespaced storage keyed by `feedId`. Clients read prices through the Pyth interface (`getPriceUnsafe`, `getPriceNoOlderThan`, `parsePriceFeedUpdates`, ...). Shared SEDA verification logic lives in `contracts/base/BaseSedaAdapter.sol` so future adapters (e.g. a Chainlink-style adapter) can reuse it.
-
-Both contracts are UUPS-upgradeable and use ERC-7201 namespaced storage.
-
-## Feed identity
-
-```
-feedId = keccak256(abi.encode(drId, symbolId))
+```sh
+anvil
 ```
 
-- `drId` is the SEDA data request id. It commits to the oracle program (exec + tally) and the full `execInputs` (including the batch symbol list).
-- `symbolId` is the per-symbol identifier carried in each `SedaPriceUpdate` entry (for Pyth-compatible deployments, this is the Pyth price feed id).
+Build and run tests:
 
-This shape is interim: changing the batch (adding or removing a symbol) changes the `drId` and therefore rekeys every feed. Consumers integrating this version effectively hard-code a fixed batch.
-
-## Prerequisites
-
-- [Bun](https://bun.sh)
-- **Base Sepolia (example):** `DEPLOYER_PRIVATE_KEY`; optional `BASE_SEPOLIA_RPC_URL`; `BASESCAN_API_KEY` if you verify contracts (see `hardhat.config.ts`)
-
-## Quick start
-
-```bash
-bun install
-bun run compile
-bun test
+```sh
+make build
+make test
+make test-upgrade
 ```
 
-## Deploy
+Deploy the proxy locally:
 
-The repository ships a single deployment script that deploys FastProver and SedaPythAdapter (both as UUPS proxies) and registers the SEDA FAST testnet signer as a trusted key on the prover:
-
-```bash
-bunx hardhat run scripts/deploy-seda-pyth.ts --network baseSepolia
+```sh
+make deploy-local
 ```
 
-You can also use `--network local` against a node at `http://127.0.0.1:8545` (see `hardhat.config.ts`). Add other networks there as needed.
+This deploys `SedaPythAdapter` behind a UUPS proxy using:
 
-The script prints the two proxy addresses and the trusted key on completion.
+- `SEDA_PROVER=0x1000000000000000000000000000000000000001`
+- `OWNER=0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266`
+- Anvil account `0`
 
-## Pushing updates
+Upgrade the existing proxy locally:
 
-Any account can push updates; the prover enforces that the signature comes from a trusted SEDA FAST signer, and the adapter enforces `consensus == true` and `exitCode == 0`.
-
-Each element of `updateData` is an ABI-encoded `BaseSedaAdapter.SignedPayload`:
-
-```solidity
-struct SignedPayload {
-    bytes data;      // ABI-encoded SedaDataTypes.Result
-    bytes signature; // SEDA FAST ECDSA signature over deriveResultId(result)
-}
+```sh
+make upgrade-local PROXY_ADDRESS=0x...
 ```
 
-The oracle program's tally output (`result.result`) must ABI-encode a non-empty `SedaPythAdapter.SedaPriceUpdate[]`:
+The local upgrade target uses the test-only implementation `SedaPythAdapterV2Mock`.
 
-```solidity
-struct SedaPriceUpdate {
-    bytes32 symbolId;              // e.g. Pyth price feed id
-    PythAdapterStorage.PriceInfo priceInfo;
-}
+## Useful checks
+
+Verify proxy state after deployment or upgrade:
+
+```sh
+cast call <PROXY_ADDRESS> "owner()(address)" --rpc-url http://127.0.0.1:8545
+cast call <PROXY_ADDRESS> "getProver()(address)" --rpc-url http://127.0.0.1:8545
+cast call <PROXY_ADDRESS> "version()(uint256)" --rpc-url http://127.0.0.1:8545
 ```
 
-Submit through either `updatePriceFeeds(bytes[])` or `updatePriceFeedsIfNecessary(bytes[], bytes32[], uint64[])`. See `scripts/test-e2e.ts` for a full end-to-end example.
-
-## Reading prices
-
-```solidity
-IPyth pyth = IPyth(adapter);
-PythStructs.Price memory p = pyth.getPriceUnsafe(feedId);
-// or, with a freshness bound:
-PythStructs.Price memory p2 = pyth.getPriceNoOlderThan(feedId, maxAgeSeconds);
-```
-
-`feedId` is computed client-side via `keccak256(abi.encode(drId, symbolId))`.
-
-## Development
-
-### Quality gates
-
-```bash
-bun run check           # solhint + Prettier (Solidity) check + Biome check (same as CI)
-bun run check:sol       # Solidity only: solhint + prettier --check
-bun run check:ts        # TypeScript only: biome check
-bun run fix             # apply fix:sol then fix:ts
-bun run fix:sol         # solhint --fix + prettier --write on *.sol
-bun run fix:ts          # biome --write --unsafe
-```
-
-### Tests with reporting
-
-```bash
-bun run test:gas        # REPORT_GAS=true
-bun run test:coverage   # hardhat coverage
-```
-
-### Cleanup
-
-```bash
-bun run clean           # hardhat clean + cache/coverage dirs
-```
-
-## Security
-
-- Only the FastProver's trusted signer set can produce accepted signatures.
-- The adapter additionally requires every accepted result to be in consensus with `exitCode == 0`.
-- Owner controls: updating the prover address, pausing updates, and authorizing upgrades.
-- Storage uses ERC-7201 namespaced layouts; upgrades are UUPS with `onlyOwner` authorization.
-
-## License
-
-MIT. See [LICENSE](LICENSE).
+`version()` exists only after upgrading to `SedaPythAdapterV2Mock`.

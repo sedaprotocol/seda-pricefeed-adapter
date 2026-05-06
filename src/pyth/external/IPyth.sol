@@ -6,10 +6,6 @@ import "./IPythEvents.sol";
 
 /// @title Consume prices from the Pyth Network (https://pyth.network/).
 /// @dev Please refer to the guidance at https://docs.pyth.network/documentation/pythnet-price-feeds/best-practices for how to consume prices safely.
-/// @dev Mirrors the canonical `IPyth` shipped as `@pythnetwork/pyth-sdk-solidity` v4.3.1
-///      (source: pyth-network/pyth-crosschain, target_chains/ethereum/sdk/solidity/IPyth.sol).
-///      The deprecated triplet (`getValidTimePeriod`, `getPrice`, `getEmaPrice`) lives on
-///      `AbstractPyth.sol` upstream and is intentionally not part of this interface.
 /// @author Pyth Data Association
 interface IPyth is IPythEvents {
     /// @notice Returns the price of a price feed without any sanity checks.
