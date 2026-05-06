@@ -48,9 +48,9 @@ rebuild:
 # Extra CLI args go straight to forge:
 #   just test --isolate -vvv
 #   just test --match-contract FastProver
-#   just test --match-path test/FastProverUpgrade.t.sol
+#   just test --match-path test/prover/FastProver.upgrade.t.sol
 # Shebang + "$@" preserves quoting so globs in flags (e.g.
-# `--match-path 'test/*Upgrade.t.sol'`) are not expanded by the shell.
+# `--match-path 'test/**/*.upgrade.t.sol'`) are not expanded by the shell.
 # Requires `node`/`npx` on PATH (OZ validator FFI used by upgrade tests).
 # Run the full Foundry test suite (extra args forwarded to `forge test`).
 [group('test')]
@@ -62,7 +62,7 @@ test *args: rebuild
 # Convenience: only the upgrade tests (slowest path; iterate on them in isolation).
 [group('test')]
 test-upgrade:
-    just test --match-path "test/*Upgrade.t.sol" -vv
+    just test --match-path "test/**/*.upgrade.t.sol" -vv
 
 # `--no-match-coverage` strips script/test/lib so the table and lcov.info reflect
 # production code only (mirrors the GitHub `lcov --remove` step). Keep the regex

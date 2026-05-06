@@ -12,7 +12,13 @@ ffi = true
 ast = true
 build_info = true
 extra_output = ["storageLayout"]
-fs_permissions = [{ access = "read", path = "out" }]
+# `out`: needed by the OZ Upgrades plugin's reference-implementation lookup.
+# `test/fixtures`: lets `vm.readFile` load committed JSON test vectors
+# (e.g. real SEDA FAST oracle responses) without widening fs access further.
+fs_permissions = [
+    { access = "read", path = "out" },
+    { access = "read", path = "test/fixtures" },
+]
 # Suppress compiler warnings from third-party dependencies.
 ignored_warnings_from = ["lib"]
 

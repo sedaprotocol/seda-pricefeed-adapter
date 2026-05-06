@@ -3,8 +3,8 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
-import {FastProver} from "../src/prover/FastProver.sol";
-import {FastProverV2Mock} from "../script/mocks/FastProverV2Mock.sol";
+import {FastProver} from "../../src/prover/FastProver.sol";
+import {FastProverV2Mock} from "../../script/mocks/FastProverV2Mock.sol";
 
 /// @notice Validates the FastProver UUPS upgrade flow end-to-end via the OpenZeppelin Upgrades
 ///         plugin, which runs initializer + ERC-7201 namespaced storage layout validation under

@@ -28,14 +28,14 @@ Build and run tests:
 
 ```sh
 just build       # Optional; `just test` does its own clean + build first.
-just test        # Full suite (runs the OZ Upgrades validator on *Upgrade.t.sol).
+just test        # Full suite (runs the OZ Upgrades validator on *.upgrade.t.sol).
 just test-upgrade  # Only the upgrade tests (slowest path; iterate in isolation).
 ```
 
 Forge flags pass through `just test`, so single-file runs are one-liners:
 
 ```sh
-just test --match-path test/FastProverUpgrade.t.sol -vvv
+just test --match-path test/prover/FastProver.upgrade.t.sol -vvv
 just test --match-contract FastProver --isolate
 ```
 
