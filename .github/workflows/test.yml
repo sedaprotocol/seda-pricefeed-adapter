@@ -91,9 +91,10 @@ jobs:
         uses: zgosalvez/github-actions-report-lcov@v5
         with:
           coverage-files: lcov.info
-          # Floor reflects current src/ line coverage (~15%). Ratchet upward
-          # as production code gains real tests; do not lower it.
-          minimum-coverage: 10
+          # Floor sits 1% below the current src/ line coverage (100%) so a
+          # single accidental uncovered line doesn't flap CI. Ratchet upward as
+          # the suite grows; do not lower it.
+          minimum-coverage: 99
           github-token: ${{ secrets.GITHUB_TOKEN }}
           artifact-name: code-coverage-html-report
           title-prefix: "Foundry "
