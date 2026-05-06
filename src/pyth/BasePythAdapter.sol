@@ -146,13 +146,27 @@ abstract contract BasePythAdapter is IPyth {
 
     /// @notice Get update fee
     /// @return The update fee (always 0 for this implementation)
-    function getUpdateFee(bytes[] calldata /* updateData */ ) external pure override returns (uint256) {
+    function getUpdateFee(
+        bytes[] calldata /* updateData */
+    )
+        external
+        pure
+        override
+        returns (uint256)
+    {
         return 0;
     }
 
     /// @notice Get TWAP update fee
     /// @return The update fee (function reverts - TWAP is not implemented)
-    function getTwapUpdateFee(bytes[] calldata /* updateData */ ) external pure override returns (uint256) {
+    function getTwapUpdateFee(
+        bytes[] calldata /* updateData */
+    )
+        external
+        pure
+        override
+        returns (uint256)
+    {
         revert TwapNotImplemented();
     }
 
@@ -213,7 +227,11 @@ abstract contract BasePythAdapter is IPyth {
 
     /// @notice Parse time-weighted average price (TWAP) from two consecutive price updates
     /// @return Array of TWAP price feeds (function reverts - not implemented)
-    function parseTwapPriceFeedUpdates(bytes[] calldata, /* updateData */ bytes32[] calldata /* priceIds */ )
+    function parseTwapPriceFeedUpdates(
+        bytes[] calldata,
+        /* updateData */
+        bytes32[] calldata /* priceIds */
+    )
         external
         payable
         override
@@ -418,10 +436,7 @@ abstract contract BasePythAdapter is IPyth {
         return PythStructs.PriceFeed({
             id: priceId,
             price: PythStructs.Price({
-                price: priceInfo.price,
-                conf: priceInfo.conf,
-                expo: priceInfo.expo,
-                publishTime: priceInfo.publishTime
+                price: priceInfo.price, conf: priceInfo.conf, expo: priceInfo.expo, publishTime: priceInfo.publishTime
             }),
             emaPrice: PythStructs.Price({
                 price: priceInfo.emaPrice,

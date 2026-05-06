@@ -142,12 +142,7 @@ library SedaPayloads {
         ups[0] = SedaPythAdapter.SedaPriceUpdate({
             symbolId: symbolId,
             priceInfo: BasePythAdapter.PriceInfo({
-                publishTime: publishTime,
-                expo: -8,
-                price: price,
-                conf: conf,
-                emaPrice: price,
-                emaConf: conf
+                publishTime: publishTime, expo: -8, price: price, conf: conf, emaPrice: price, emaConf: conf
             })
         });
     }
