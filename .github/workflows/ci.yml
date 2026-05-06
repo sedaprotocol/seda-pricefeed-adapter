@@ -88,6 +88,12 @@ jobs:
           name: lcov
           path: lcov.info
 
+      # `zgosalvez/github-actions-report-lcov` shells out to `genhtml` (from the
+      # `lcov` Debian/Ubuntu package); ubuntu-latest images do not include it.
+      - name: "Install lcov (genhtml)"
+        if: github.event_name == 'pull_request'
+        run: sudo apt-get update && sudo apt-get install -y lcov
+
       - name: "Add coverage PR comment + enforce threshold 💬"
         if: github.event_name == 'pull_request'
         uses: zgosalvez/github-actions-report-lcov@v5
