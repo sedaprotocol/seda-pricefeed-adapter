@@ -11,17 +11,13 @@ import {SedaDataTypes} from "../../src/prover/SedaDataTypes.sol";
 import {SedaPythAdapter} from "../../src/SedaPythAdapter.sol";
 import {SedaPayloads} from "../helpers/SedaPayloads.sol";
 
-/// @notice End-to-end test against a real captured SEDA FAST oracle response.
+/// @notice Shared end-to-end test logic for captured SEDA FAST oracle vectors.
 ///
-/// Drives a full `updatePriceFeeds` against a payload signed by the live FAST signer,
-/// then asserts the stored `PriceInfo` matches the values the SEDA service reported in
-/// the same vector. This is the strongest available regression test for the wire format,
-/// `deriveResultId` hashing, the FAST `v ∈ {0,1}` normalization branch in
-/// `FastProver._verifySignature`, and the `SedaPriceUpdate[]` decoding in
-/// `SedaPythAdapter._processUpdateData`.
-///
-/// Vector: [test/fixtures/fast-service-execution.json](../fixtures/fast-service-execution.json).
-contract SedaPythAdapterFastServiceTest is Test {
+/// Each concrete subclass points at a different fixture file via `_fixturePath()`.
+/// The tests exercise the full wire format: `deriveResultId` hashing, FAST `v ∈ {0,1}`
+/// normalization in `FastProver._verifySignature`, and `SedaPriceUpdate[]` decoding
+/// in `SedaPythAdapter._processUpdateData`.
+abstract contract BaseFastServiceTest is Test {
     address internal constant OWNER = address(0xBEEF);
 
     /// @dev Ethereum address of the SEDA FAST signer, derived offline from compressed
@@ -30,17 +26,16 @@ contract SedaPythAdapterFastServiceTest is Test {
     ///      a known external operator identity, not just whatever recovery returns.
     address internal constant EXPECTED_SIGNER = 0x593CEBb17C116D48d69b108711f2D8C419ed8758;
 
-    /// @dev Per-symbol id from the captured `execute.result` JSON, used together with
-    ///      `drId` to compute the canonical `feedId`.
-    bytes32 internal constant SYMBOL_ID = 0xb39c402b9bd8428ba7a4cc2d1aca1432756cddeb60941a9175541a819095269e;
-
     string internal vectorJson;
 
     FastProver internal fastProver;
     SedaPythAdapter internal adapter;
 
+    /// @dev Override to return the path to the test vector JSON file.
+    function _fixturePath() internal pure virtual returns (string memory);
+
     function setUp() public {
-        vectorJson = vm.readFile("test/fixtures/fast-service-execution.json");
+        vectorJson = vm.readFile(_fixturePath());
 
         address proverImpl = address(new FastProver());
         fastProver =
@@ -58,25 +53,33 @@ contract SedaPythAdapterFastServiceTest is Test {
     }
 
     /// @notice The captured request and response refer to the same `execProgramId`.
-    /// @dev Cheap fixture-integrity guard: catches silent corruption if the JSON is
-    ///      ever re-imported from a different SEDA vector.
     function test_vectorRequestMatchesResponse() public view {
         string memory requestId = vm.parseJsonString(vectorJson, ".request.execProgramId");
         string memory responseId = vm.parseJsonString(vectorJson, ".response.data.dataRequest.execProgramId");
         assertEq(requestId, responseId);
     }
 
+    /// @notice The symbol IDs in the ABI-encoded result match the feed IDs in the request.
+    /// @dev Override in subclasses whose fixture uses a different request schema.
+    function test_vectorFeedIdsMatchRequest() public view virtual {
+        SedaDataTypes.Result memory result = _loadResult();
+        SedaPythAdapter.SedaPriceUpdate[] memory updates =
+            abi.decode(result.result, (SedaPythAdapter.SedaPriceUpdate[]));
+
+        for (uint256 i = 0; i < updates.length; ++i) {
+            string memory path = string.concat(".request.execInputs.feeds[", vm.toString(i), "].pythFeedId");
+            bytes32 expected = vm.parseJsonBytes32(vectorJson, path);
+            assertEq(updates[i].symbolId, expected);
+        }
+    }
+
     /// @notice `ecrecover(deriveResultId(result), normalize(sig)) == EXPECTED_SIGNER`.
-    /// @dev Pure offline check — does not touch the deployed contracts.
     function test_signerRecoveryMatchesExpectedAddress() public view {
         SedaDataTypes.Result memory result = _loadResult();
         bytes memory sig = _loadSignature();
 
         bytes32 resultId = SedaDataTypes.deriveResultId(result);
 
-        // The SEDA FAST service emits `v ∈ {0, 1}`; lift to canonical `{27, 28}` so
-        // the precompile-style `ecrecover` accepts it. (`FastProver._verifySignature`
-        // does the same on-chain; here we mirror it for the offline check.)
         uint8 v = uint8(sig[64]);
         if (v < 27) v += 27;
         bytes32 r;
@@ -91,7 +94,7 @@ contract SedaPythAdapterFastServiceTest is Test {
     }
 
     /// @notice Submits the captured payload via `updatePriceFeeds` and asserts the
-    ///         stored feed matches the values reported by the FAST oracle program.
+    ///         stored feeds match the values reported by the FAST oracle program.
     function test_endToEnd_acceptsRealProductionVector() public {
         SedaDataTypes.Result memory result = _loadResult();
         bytes memory sig = _loadSignature();
@@ -103,24 +106,25 @@ contract SedaPythAdapterFastServiceTest is Test {
 
         adapter.updatePriceFeeds(blob);
 
-        // Expected values are the human-readable feed reported in the vector's
-        // `execute.result` JSON (decoded by the oracle program off-chain).
-        bytes32 feedId = SedaPayloads.computeFeedId(result.drId, SYMBOL_ID);
-        BasePythAdapter.PriceInfo memory info = adapter.getPriceInfo(feedId);
+        SedaPythAdapter.SedaPriceUpdate[] memory updates =
+            abi.decode(result.result, (SedaPythAdapter.SedaPriceUpdate[]));
+        assertTrue(updates.length > 0, "fixture must contain at least one feed");
 
-        assertEq(info.price, int64(7_597_665_123_165));
-        assertEq(info.conf, uint64(1_797_622_665));
-        assertEq(info.expo, int32(-8));
-        assertEq(info.publishTime, uint64(1_776_787_268));
-        assertEq(info.emaPrice, int64(7_597_665_123_165));
-        assertEq(info.emaConf, uint64(1_797_622_665));
+        for (uint256 i = 0; i < updates.length; ++i) {
+            bytes32 feedId = SedaPayloads.computeFeedId(result.drId, updates[i].symbolId);
+            BasePythAdapter.PriceInfo memory info = adapter.getPriceInfo(feedId);
+
+            assertEq(info.price, updates[i].priceInfo.price);
+            assertEq(info.conf, updates[i].priceInfo.conf);
+            assertEq(info.expo, updates[i].priceInfo.expo);
+            assertEq(info.publishTime, updates[i].priceInfo.publishTime);
+            assertEq(info.emaPrice, updates[i].priceInfo.emaPrice);
+            assertEq(info.emaConf, updates[i].priceInfo.emaConf);
+        }
     }
 
     // ============ Internals ============
 
-    /// @dev Reconstructs the `Result` struct from the captured JSON. The SEDA service
-    ///      emits hex without a `0x` prefix, so each field is read as a string and
-    ///      run through `vm.parseBytes32` / `vm.parseBytes` after prepending `0x`.
     function _loadResult() private view returns (SedaDataTypes.Result memory result) {
         result.drId = vm.parseBytes32(_hex(".response.data.dataResult.drId"));
         result.gasUsed = uint128(vm.parseUint(vm.parseJsonString(vectorJson, ".response.data.dataResult.gasUsed")));
@@ -140,17 +144,34 @@ contract SedaPythAdapterFastServiceTest is Test {
         return vm.parseBytes(_hex(".response.data.signature"));
     }
 
-    /// @dev Reads a hex-encoded string field and prepends `0x` so it can be passed to
-    ///      `vm.parseBytes` / `vm.parseBytes32` (which require the prefix).
     function _hex(string memory key) private view returns (string memory) {
         return string.concat("0x", vm.parseJsonString(vectorJson, key));
     }
 
-    /// @dev `paybackAddress` and `sedaPayload` are emitted as `""` when unset; treat
-    ///      empty strings as empty `bytes` (skipping the `vm.parseBytes("0x")` round-trip).
     function _maybeBytes(string memory key) private view returns (bytes memory) {
         string memory raw = vm.parseJsonString(vectorJson, key);
         if (bytes(raw).length == 0) return bytes("");
         return vm.parseBytes(string.concat("0x", raw));
+    }
+}
+
+/// @notice Single-feed vector (BTC-USD only, legacy request schema).
+/// Vector: test/fixtures/fast-service-execution-single-feed.json
+contract FastServiceSingleFeedTest is BaseFastServiceTest {
+    function _fixturePath() internal pure override returns (string memory) {
+        return "test/fixtures/fast-service-execution-single-feed.json";
+    }
+
+    /// @dev Legacy fixture uses a flat request schema without a `feeds[]` array.
+    function test_vectorFeedIdsMatchRequest() public pure override {
+        // skip — old request format has no feeds[] array
+    }
+}
+
+/// @notice Multi-feed vector (BTC-USD + ETH-USD).
+/// Vector: test/fixtures/fast-service-execution-multi-feed.json
+contract FastServiceMultiFeedTest is BaseFastServiceTest {
+    function _fixturePath() internal pure override returns (string memory) {
+        return "test/fixtures/fast-service-execution-multi-feed.json";
     }
 }
