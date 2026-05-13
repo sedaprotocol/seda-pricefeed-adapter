@@ -7,6 +7,9 @@ import {FastProver} from "../src/prover/FastProver.sol";
 import {SedaPythAdapter} from "../src/SedaPythAdapter.sol";
 
 contract DeployAllScript is Script {
+    /// @dev ERC1967 implementation slot: keccak256("eip1967.proxy.implementation") - 1
+    bytes32 private constant _IMPL_SLOT = 0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc;
+
     function run() external returns (address proverProxy, address adapterProxy) {
         address owner = vm.envAddress("OWNER");
         address[] memory trustedKeys = _parseAddresses(vm.envOr("TRUSTED_KEYS", string("")));
@@ -29,6 +32,50 @@ contract DeployAllScript is Script {
 
         console2.log("FastProver proxy:", proverProxy);
         console2.log("SedaPythAdapter proxy:", adapterProxy);
+
+        _saveDeployment(proverProxy, adapterProxy);
+    }
+
+    function _saveDeployment(address proverProxy, address adapterProxy) internal {
+        string memory name = vm.envOr("DEPLOYMENT_NAME", string(""));
+        if (bytes(name).length == 0) return;
+
+        address proverImpl = address(uint160(uint256(vm.load(proverProxy, _IMPL_SLOT))));
+        address adapterImpl = address(uint160(uint256(vm.load(adapterProxy, _IMPL_SLOT))));
+
+        string memory fp = "fp";
+        vm.serializeAddress(fp, "proxy", proverProxy);
+        string memory fpJson = vm.serializeAddress(fp, "implementation", proverImpl);
+
+        string memory sa = "sa";
+        vm.serializeAddress(sa, "proxy", adapterProxy);
+        string memory saJson = vm.serializeAddress(sa, "implementation", adapterImpl);
+
+        string memory c = "contracts";
+        vm.serializeString(c, "FastProver", fpJson);
+        string memory cJson = vm.serializeString(c, "SedaPythAdapter", saJson);
+
+        string memory root = "root";
+        vm.serializeString(root, "network", name);
+        vm.serializeUint(root, "chainId", block.chainid);
+        vm.serializeAddress(root, "deployer", msg.sender);
+        vm.serializeString(root, "version", _gitVersion());
+        vm.serializeUint(root, "timestamp", block.timestamp);
+        string memory rootJson = vm.serializeString(root, "contracts", cJson);
+
+        string memory path = string.concat("deployments/", vm.toString(block.chainid), "-", name, ".json");
+        vm.writeJson(rootJson, path);
+        console2.log("Deployment saved to:", path);
+    }
+
+    function _gitVersion() internal returns (string memory) {
+        string[] memory cmd = new string[](5);
+        cmd[0] = "git";
+        cmd[1] = "describe";
+        cmd[2] = "--tags";
+        cmd[3] = "--always";
+        cmd[4] = "--dirty";
+        return vm.trim(string(vm.ffi(cmd)));
     }
 
     function _parseAddresses(string memory csv) internal pure returns (address[] memory addresses) {
