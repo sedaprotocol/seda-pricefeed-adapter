@@ -293,6 +293,7 @@ contract FastProverTest is Test {
         for (uint256 s = 1; s < 256; ++s) {
             if (expectedIn[s]) {
                 expectedCount++;
+                // forge-lint: disable-next-line(unsafe-typecast)
                 (, address k) = SedaPayloads.trustedKey(string(abi.encodePacked("fuzz-", uint8(s))));
                 assertTrue(prover.isTrustedKey(k), "expected key not present");
             }

@@ -287,6 +287,7 @@ abstract contract BasePythAdapter is IPyth {
         if (info.publishTime == 0) revert PythErrors.PriceFeedNotFound();
 
         // Age validation (only if age > 0)
+        // forge-lint: disable-next-line(block-timestamp)
         if (age > 0 && (block.timestamp < info.publishTime || block.timestamp - info.publishTime > age)) {
             revert PythErrors.StalePrice();
         }
